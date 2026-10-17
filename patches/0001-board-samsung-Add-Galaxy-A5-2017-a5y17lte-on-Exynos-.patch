@@ -1,0 +1,322 @@
+From 79cdfbe09190d22e67e51e94767e36e3fc9dc653 Mon Sep 17 00:00:00 2001
+From: Jimmy <fakeandroit@gmail.com>
+Date: Sun, 18 Oct 2026 02:04:20 +0300
+Subject: [PATCH] board: samsung: Add Galaxy A5 (2017) a5y17lte on Exynos 7880
+ (step 1 diagnostics)
+
+Adds Exynos 7880 SoC support and the a5y17lte board with a diagnostics
+mode that prints CPU, timer, DECON and IDMA state to the boot
+framebuffer at 0x67000000 and halts. First step of an XNU port.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01PCgURnyLYz6KYCEcLn4Tp2
+---
+ board/Kconfig                  |  16 ++++
+ board/Makefile                 |   1 +
+ board/samsung/board-a5y17lte.c | 143 +++++++++++++++++++++++++++++++++
+ configs/a5y17lte_defconfig     |   8 ++
+ include/soc/exynos7880.h       |  38 +++++++++
+ soc/Kconfig                    |   6 ++
+ soc/Makefile                   |   1 +
+ soc/exynos/exynos7880.c        |  11 +++
+ 8 files changed, 224 insertions(+)
+ create mode 100644 board/samsung/board-a5y17lte.c
+ create mode 100644 configs/a5y17lte_defconfig
+ create mode 100644 include/soc/exynos7880.h
+ create mode 100644 soc/exynos/exynos7880.c
+
+diff --git a/board/Kconfig b/board/Kconfig
+index 05b22df..0f3bfdd 100644
+--- a/board/Kconfig
++++ b/board/Kconfig
+@@ -232,6 +232,22 @@ menu "Device Support"
+ 		help
+ 		  Say Y if you want to include support for Samsung Galaxy A3 (2016)
+ 
++	config SAMSUNG_A5Y17LTE
++		bool "Support for Samsung Galaxy A5 (2017)"
++		default n
++		depends on EXYNOS_7880
++		help
++		  Say Y if you want to include support for Samsung Galaxy A5 (2017)
++
++	config A5Y17LTE_DIAG_HALT
++		bool "a5y17lte: print platform diagnostics and halt"
++		default y
++		depends on SAMSUNG_A5Y17LTE
++		help
++		  Print CPU, timer and display registers on screen, then halt
++		  instead of booting a payload. Used to prove the platform
++		  before an XNU payload exists.
++
+ 	config SAMSUNG_A71
+ 		bool "Support for Samsung Galaxy A71"
+ 		default n
+diff --git a/board/Makefile b/board/Makefile
+index e3aa3fa..56b60a0 100644
+--- a/board/Makefile
++++ b/board/Makefile
+@@ -29,6 +29,7 @@ lib-$(CONFIG_SAMSUNG_A21S) += samsung/board-a21s.o
+ lib-$(CONFIG_SAMSUNG_A30) += samsung/board-a30.o
+ lib-$(CONFIG_SAMSUNG_A33X) += samsung/board-a33x.o
+ lib-$(CONFIG_SAMSUNG_A71) += samsung/board-a71.o
++lib-$(CONFIG_SAMSUNG_A5Y17LTE) += samsung/board-a5y17lte.o
+ lib-$(CONFIG_SAMSUNG_BEYOND1LTE) += samsung/board-beyond1lte.o
+ lib-$(CONFIG_SAMSUNG_C1S) += samsung/board-c1s.o
+ lib-$(CONFIG_SAMSUNG_DREAMLTE) += samsung/board-dreamlte.o
+diff --git a/board/samsung/board-a5y17lte.c b/board/samsung/board-a5y17lte.c
+new file mode 100644
+index 0000000..b310ca1
+--- /dev/null
++++ b/board/samsung/board-a5y17lte.c
+@@ -0,0 +1,143 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Samsung Galaxy A5 (2017) - a5y17lte - Exynos 7880
++ *
++ * Step 1 of the XNU port: prove that uniLoader runs after S-Boot,
++ * that the boot framebuffer is where we expect, and record the CPU
++ * state we are entered in (exception level, MMU/caches, timer).
++ *
++ * Framebuffer 0x67000000: used by S-Boot on the sibling Exynos
++ * 7570/7580/7870 phones (uniLoader j4lte/a3xelte, mainline
++ * exynos7870-j5y17lte and U-Boot on7xelte, the latter 1080x1920).
++ * The IDMA base-address registers are printed so the real address
++ * can be confirmed on this device.
++ */
++#include <board.h>
++#include <util.h>
++#include <stdint.h>
++#include <drivers/framework.h>
++#include <lib/simplefb.h>
++#include <lib/debug.h>
++#include <soc/exynos7880.h>
++
++#define A5Y17LTE_FB_BASE	0x67000000
++#define A5Y17LTE_FB_WIDTH	1080
++#define A5Y17LTE_FB_HEIGHT	1920
++
++#define READ_SYSREG(reg) ({ \
++	uint64_t __v; \
++	__asm__ volatile("mrs %0, " #reg : "=r"(__v)); \
++	__v; })
++
++static inline uint32_t rd32(uintptr_t addr)
++{
++	return *(volatile uint32_t *)addr;
++}
++
++static void print_reg64(const char *name, uint64_t v)
++{
++	printk(KERN_INFO, "%s = 0x%08x%08x\n", name,
++	       (unsigned int)(v >> 32), (unsigned int)(v & 0xffffffff));
++}
++
++int a5y17lte_init(void)
++{
++	/* Allow framebuffer to be written to */
++	*(volatile int*) (DECON_F_BASE + HW_SW_TRIG_CONTROL) = 0x1281;
++	return 0;
++}
++
++static struct video_info a5y17lte_fb = {
++	.format = FB_FORMAT_ARGB8888,
++	.width = A5Y17LTE_FB_WIDTH,
++	.height = A5Y17LTE_FB_HEIGHT,
++	.stride = 4,
++	.address = (void *)A5Y17LTE_FB_BASE
++};
++
++static const struct device a5y17lte_devices[] = {
++	{ "simplefb", &a5y17lte_fb, "fb" },
++};
++
++#ifdef CONFIG_A5Y17LTE_DIAG_HALT
++/*
++ * Four bars along the bottom: red, green, blue, white (left to right).
++ * If the colours appear in a different order the pixel format is not
++ * ARGB8888 and the board file must be changed.
++ */
++static void draw_colour_bars(void)
++{
++	static const uint32_t bars[4] = {
++		0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffffff
++	};
++	volatile uint32_t *fb = (volatile uint32_t *)A5Y17LTE_FB_BASE;
++	int bar_w = A5Y17LTE_FB_WIDTH / 4;
++
++	for (int y = A5Y17LTE_FB_HEIGHT - 200; y < A5Y17LTE_FB_HEIGHT; y++)
++		for (int x = 0; x < A5Y17LTE_FB_WIDTH; x++)
++			fb[y * A5Y17LTE_FB_WIDTH + x] = bars[x / bar_w];
++}
++
++static int a5y17lte_diag(void)
++{
++	uint64_t el = (READ_SYSREG(CurrentEL) >> 2) & 3;
++
++	printk(KERN_NOTICE, "=== a5y17lte step 1 diagnostics ===\n");
++	printk(KERN_INFO, "CurrentEL = EL%d\n", (int)el);
++	print_reg64("MIDR_EL1  ", READ_SYSREG(MIDR_EL1));
++	print_reg64("MPIDR_EL1 ", READ_SYSREG(MPIDR_EL1));
++	print_reg64("CNTFRQ_EL0", READ_SYSREG(CNTFRQ_EL0));
++	print_reg64("DAIF      ", READ_SYSREG(DAIF));
++
++	if (el == 1) {
++		print_reg64("SCTLR_EL1 ", READ_SYSREG(SCTLR_EL1));
++		print_reg64("TCR_EL1   ", READ_SYSREG(TCR_EL1));
++		print_reg64("VBAR_EL1  ", READ_SYSREG(VBAR_EL1));
++	} else if (el == 2) {
++		print_reg64("SCTLR_EL2 ", READ_SYSREG(SCTLR_EL2));
++		print_reg64("HCR_EL2   ", READ_SYSREG(HCR_EL2));
++	}
++
++	print_reg64("ID_AA64PFR0", READ_SYSREG(ID_AA64PFR0_EL1));
++	print_reg64("ID_AA64MMFR0", READ_SYSREG(ID_AA64MMFR0_EL1));
++
++	printk(KERN_INFO, "fb @ 0x%08x %dx%d (bars: R G B W)\n",
++	       A5Y17LTE_FB_BASE, A5Y17LTE_FB_WIDTH, A5Y17LTE_FB_HEIGHT);
++	draw_colour_bars();
++
++	printk(KERN_INFO, "DECON TRIG = 0x%08x\n",
++	       rd32(DECON_F_BASE + HW_SW_TRIG_CONTROL));
++	for (int w = 0; w < 4; w++)
++		printk(KERN_INFO, "DECON WIN%d = 0x%08x\n", w,
++		       rd32(DECON_F_BASE + DECON_WIN_CONTROL(w)));
++
++	/* A hang after one of these lines means that IDMA block is gated. */
++	for (int ch = 0; ch < IDMA_NUM_CHANNELS; ch++) {
++		uintptr_t base = IDMA_G0_BASE + ch * IDMA_STRIDE;
++		printk(KERN_DEBUG, "reading IDMA%d...\n", ch);
++		printk(KERN_INFO, "IDMA%d ADDR_Y0 = 0x%08x\n", ch,
++		       rd32(base + VG_BASE_ADDR_Y(0)));
++	}
++
++	printk(KERN_NOTICE, "=== step 1 complete: halted ===\n");
++	printk(KERN_NOTICE, "Hold Vol Down + Power ~7s to reboot\n");
++
++	for (;;)
++		__asm__ volatile("wfe");
++
++	return 0;
++}
++#endif
++
++struct board_data board_ops = {
++	.name = "samsung-a5y17lte",
++	.ops = {
++		.early_init = a5y17lte_init,
++#ifdef CONFIG_A5Y17LTE_DIAG_HALT
++		.late_init = a5y17lte_diag,
++#endif
++	},
++	.devices = a5y17lte_devices,
++	.num_devices = ARRAY_SIZE(a5y17lte_devices),
++	.quirks = 0
++};
+diff --git a/configs/a5y17lte_defconfig b/configs/a5y17lte_defconfig
+new file mode 100644
+index 0000000..1c8ab51
+--- /dev/null
++++ b/configs/a5y17lte_defconfig
+@@ -0,0 +1,8 @@
++CONFIG_POSITION_INDEPENDENT=y
++# CONFIG_COMPRESS_GZIP is not set
++CONFIG_EXYNOS_7880=y
++CONFIG_SAMSUNG_A5Y17LTE=y
++CONFIG_A5Y17LTE_DIAG_HALT=y
++CONFIG_TEXT_BASE=0x47000000
++CONFIG_PAYLOAD_ENTRY=0x50000000
++CONFIG_RAMDISK_ENTRY=0x42000000
+diff --git a/include/soc/exynos7880.h b/include/soc/exynos7880.h
+new file mode 100644
+index 0000000..8136629
+--- /dev/null
++++ b/include/soc/exynos7880.h
+@@ -0,0 +1,38 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Samsung Exynos 7880 register map used by uniLoader.
++ *
++ * Sources (universal7880 kernel, branch hybris-17.1):
++ *   arch/arm64/boot/dts/exynos7880.dtsi
++ *   drivers/video/fbdev/exynos/decon_7880/regs-decon.h
++ *   drivers/video/fbdev/exynos/decon_7880/vpp/regs-vpp.h
++ */
++
++#ifndef EXYNOS7880_H_	/* Include guard */
++#define EXYNOS7880_H_
++
++/* Display controller (dtsi: decon_f@0x14830000) */
++#define DECON_F_BASE		0x14830000
++#define HW_SW_TRIG_CONTROL	0x70	/* regs-decon.h:92 */
++#define DECON_WIN_CONTROL(w)	(0x130 + ((w) * 0x20))	/* regs-decon.h:177 */
++
++/* Display DMA channels (dtsi: idma_g0..g2, idma_vg0..) */
++#define IDMA_G0_BASE		0x14821000
++#define IDMA_NUM_CHANNELS	6
++#define IDMA_STRIDE		0x1000
++#define VG_BASE_ADDR_Y(n)	(0x74 + (n) * 0x4)	/* regs-vpp.h:140 */
++
++/* Debug UART (dtsi: serial_2 / U-Boot uart2) */
++#define UART2_BASE		0x13820000
++
++/* GIC-400 (dtsi: gic, arm,cortex-a15-gic) */
++#define GICD_BASE		0x106E1000
++#define GICC_BASE		0x106E2000
++
++/* DRAM banks (exynos7880-a5y17lte_common.dtsi:21,26) */
++#define DRAM0_BASE		0x40000000
++#define DRAM0_SIZE		0x3E400000
++#define DRAM1_BASE		0x80000000
++#define DRAM1_SIZE		0x80000000
++
++#endif // EXYNOS7880_H_
+diff --git a/soc/Kconfig b/soc/Kconfig
+index 3c40267..db70707 100644
+--- a/soc/Kconfig
++++ b/soc/Kconfig
+@@ -87,6 +87,12 @@ config SONY
+ 		help
+ 		  Say Y if your device uses Samsung Exynos7580 SoC
+ 
++	config EXYNOS_7880
++		bool "Support for Exynos 7880"
++		select EXYNOS
++		help
++		  Say Y if your device uses Samsung Exynos7880 SoC
++
+ 	config EXYNOS_7885
+ 		bool "Support for Exynos 7885"
+ 		select EXYNOS
+diff --git a/soc/Makefile b/soc/Makefile
+index bf9edb6..102508e 100644
+--- a/soc/Makefile
++++ b/soc/Makefile
+@@ -2,6 +2,7 @@ lib-$(CONFIG_APPLE_T7000) += apple/t7000.o
+ lib-$(CONFIG_APPLE_T8010) += apple/t8010.o
+ lib-$(CONFIG_EXYNOS_7420) += exynos/exynos7420.o
+ lib-$(CONFIG_EXYNOS_7570) += exynos/exynos7570.o
++lib-$(CONFIG_EXYNOS_7880) += exynos/exynos7880.o
+ lib-$(CONFIG_EXYNOS_7885) += exynos/exynos7885.o
+ lib-$(CONFIG_EXYNOS_8895) += exynos/exynos8895.o
+ lib-$(CONFIG_EXYNOS_9610) += exynos/exynos9610.o
+diff --git a/soc/exynos/exynos7880.c b/soc/exynos/exynos7880.c
+new file mode 100644
+index 0000000..07f2400
+--- /dev/null
++++ b/soc/exynos/exynos7880.c
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Samsung Exynos 7880 SoC support.
++ */
++
++#include <soc/exynos7880.h>
++
++void soc_init(void) {
++	/* Allow framebuffer to be written to (same DECON trigger as 7570/7885) */
++	*(volatile int*) (DECON_F_BASE + HW_SW_TRIG_CONTROL) = 0x1281;
++}
+-- 
+2.43.0
+
