@@ -1,8 +1,8 @@
 From 79cdfbe09190d22e67e51e94767e36e3fc9dc653 Mon Sep 17 00:00:00 2001
 From: Jimmy <fakeandroit@gmail.com>
 Date: Sun, 18 Oct 2026 02:04:20 +0300
-Subject: [PATCH] board: samsung: Add Galaxy A5 (2017) a5y17lte on Exynos 7880
- (step 1 diagnostics)
+Subject: [PATCH 1/2] board: samsung: Add Galaxy A5 (2017) a5y17lte on Exynos
+ 7880 (step 1 diagnostics)
 
 Adds Exynos 7880 SoC support and the a5y17lte board with a diagnostics
 mode that prints CPU, timer, DECON and IDMA state to the boot

@@ -109,6 +109,26 @@ The 7880 has two UARTs, both `samsung,exynos-uart`:
 - **MMIO touched:** only DECON `0x14830070` (write `0x1281`), DECON WIN0-3, and IDMA0-5 `+0x74`. No other hardware.
 - **Not proven by emulation:** real S-Boot entry state, real register values, and real scan-out. That is the phone test.
 
+## 11. Hardware result 1 (phone, 2026-10-18 02:27)
+
+**Result.** After flashing `a5y17lte-step1-boot.img`, the Samsung "Galaxy A5 / powered by android" logo stayed on screen for more than 2 minutes. There was no uniLoader text.
+
+**Explanation.**
+
+- The panel is **MIPI command mode with hardware TE trigger** (`exynos7880.dtsi` decon_f: `psr_mode = <2>`, `trig_mode = <0>`).
+- In command mode the panel keeps its own frame memory and only updates when DECON is triggered (`decon_reg_7880.c:611` `decon_reg_set_trigger`).
+- Step 1 wrote `0x1281` once, before drawing, and never triggered again. So any drawing could not reach the panel.
+
+**Inconclusive.** This does not show whether the code ran.
+
+**Fix (step 1b):**
+
+- DECON is put in software trigger, with `TRIG_AUTO_MASK` and one `SW_TRIG` frame per printk line.
+- Then the board reboots via PMU `SWRESET` (`0x106B0400` = 1, from `S5E7880-pmusfr.h:161` and `exynos-reboot.c:72,299`) after 30 s.
+- A self-reboot proves execution even with no picture.
+
+**Emulated:** 333 frames fired, all text drawn, the reset write reached, and no other MMIO touched.
+
 ## Open items
 
 1. A UART cable for the A5 (USB-C debug UART), or framebuffer-only console.

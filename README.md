@@ -10,7 +10,7 @@ This project is separate from the Sailfish work (`~/hadk`, `~/sfos`) and never t
 |---|---|
 | `EVIDENCE.md` | Every hardware/source claim, with file and line |
 | `setup.sh` | Recreates all source trees at pinned revisions |
-| `build-step1.sh` | Builds uniLoader and packs `out/a5y17lte-step1-boot.img` |
+| `build-step1.sh` | Builds uniLoader and packs `out/a5y17lte-step1b-boot.img` |
 | `patches/` | The a5y17lte uniLoader changes (applied by `setup.sh`) |
 | `tools/mkbootimg_v0.py` | Boot image packer/inspector (`pack` / `info`) |
 | `tools/emulate_step1.py`, `tools/run-emulator.sh` | Runs the boot image on an emulated Cortex-A53 and saves the screen as PNG |
@@ -22,7 +22,7 @@ This project is separate from the Sailfish work (`~/hadk`, `~/sfos`) and never t
 ```
 setup.sh ──► upstream/uniLoader @bdc0f6d ──(+ patches/*.patch)──► uniLoader/ (branch a5y17lte)
 build-step1.sh ──► make a5y17lte_defconfig ──► uniLoader/uniLoader (raw binary)
-               └─► tools/mkbootimg_v0.py pack ──► out/a5y17lte-step1-boot.img (+ .sha256)
+               └─► tools/mkbootimg_v0.py pack ──► out/a5y17lte-step1b-boot.img (+ .sha256)
 tools/run-emulator.sh ──► loads that same boot.img ──► out/step1-screen.png
 ```
 
@@ -46,7 +46,7 @@ tools/run-emulator.sh        # optional: emulated screen at out/step1-screen.png
 ## Step 1: flash and test (TWRP)
 
 1. **Back up the current boot partition.** In TWRP, go to Backup, tick **Boot** only, and swipe. This holds your Sailfish boot image.
-2. Copy `a5y17lte-step1-boot.img` to the phone.
+2. Copy `a5y17lte-step1b-boot.img` to the phone.
 3. In TWRP, go to Install, tap **Install Image**, pick the file, and choose **Boot**.
 4. Reboot to System.
 5. **Photograph the screen** and send the photo back.
@@ -64,7 +64,8 @@ Only the boot partition changes, and the backup restores it exactly.
 | Text and **R G B W** bars in that order | uniLoader runs, framebuffer is 0x67000000, and the format is ARGB8888. Read off `CurrentEL` and the IDMA lines. |
 | Bars in a different colour order | Wrong pixel format. Tell me the order. |
 | Text stops after `reading IDMAn...` | That display block is clock-gated. Still useful; send the photo. |
-| Samsung logo then black, or logo stays | S-Boot did not run it or the framebuffer address is wrong. Next try: framebuffer auto-detect build. |
+| Logo stays, phone **reboots by itself after ~30-40 s** | Code ran; display trigger still wrong. |
+| Logo stays forever, never reboots | S-Boot did not run it or the framebuffer address is wrong. Next try: framebuffer auto-detect build. |
 | "Kernel is not seandroid enforcing" in red at top | Normal warning, ignore it. |
 
 ## Status
