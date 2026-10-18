@@ -453,6 +453,39 @@ Photos: `evidence/hw-mainline-m3b-{clock,keys}-2026-10-19.jpg`.
 - If the 7880 FSYS DMA master is secure, 0x71 blocks every sector *read*. EXT_CSD reads are not sector-checked, which fits the observations.
 - **M3c** shows the SMU registers, writes 0xF1, and repeats the sweep.
 
+### 17c. Hardware result for M3c: eMMC READS WORK (2026-10-19 01:15)
+
+Photos: `evidence/hw-mainline-m3c-{smu,keys}-2026-10-19.jpg`.
+
+**SMU registers:**
+
+| | SEC | CTRL0 | BEGIN0 | END0 |
+|---|---|---|---|---|
+| found | `0xdfe26492` | `0x00000071` | `0x00000000` | `0xffffffff` |
+| after the Samsung bypass write | `0xdfe26492` | `0x000000f1` | `0x00000000` | `0xffffffff` |
+
+- The found value is exactly mainline's write (0x71, no SECURE_READ).
+- The bypass write from EL1 took effect.
+
+**Clock sweep:** **0.4, 1, 5, 10, 20, 26, 40 and 52 MHz all pass**. The init used 52 MHz and rescanned the partitions.
+
+**eMMC:**
+
+- `GPT header OK ("EFI PART" in LBA 1)`
+- **25 partitions:** BOTA0 BOTA1 EFS CPEFS m9kefs1 m9kefs2 m9kefs3 CARRIER PARAM BOOT RECOVERY OTA RADIO TOMBSTONES DNT PERSISTENT STEADY RESERVED2 SYSTEM CACHE HIDDEN CP_DEBUG NAD_FW NAD_REFER USERDATA
+
+**Clock:** the kernel log shows `Bus speed = 99937500Hz (req 400000Hz, actual 399750HZ div = 125)`. That is the measured 399.75 MHz CIU divided by `ciu-div + 1` = 4, so the fixed-clock value is consistent.
+
+**Keys:** all four (Power, Volume Up/Down, Home) work again.
+
+**Root cause, confirmed.** On the Exynos7880 the eMMC DMA reads are checked by the SMU as *secure* accesses, so they need MPSCTRL0.SECURE_READ.
+
+**Kernel patch 0004:** `mmc: dw_mmc-exynos: allow secure reads through the SMU on Exynos7880`.
+
+- It sets SECURE_READ for `samsung,exynos7880-dw-mshc-smu` only.
+- It passes checkpatch.
+- **M3d** checks that the kernel alone (with no userspace SMU write) gives 0xf1. It also reports bus width/timing and a 32 MiB read speed.
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).

@@ -17,7 +17,15 @@
  * Milestone 3b result (EVIDENCE.md 17b): MMC0 CIU is 399.75 MHz; data reads
  * fail at every clock from 0.4 to 52 MHz, so speed is not the cause.
  *
- * Milestone 3c (this build): SMU test. Mainline writes MPSCTRL0 = 0x71
+ * Milestone 3c result (EVIDENCE.md 17c): SMU found at 0x71; writing 0xf1
+ * made reads pass at every clock and all 25 partitions appear.
+ *
+ * Milestone 3d (this build): the fix lives in the kernel (patch 0004).
+ *  - init no longer touches the SMU; it only shows what the kernel set
+ *  - shows bus width / timing / clock from debugfs (mmc0/ios)
+ *  - 32 MiB uncached read-speed test; partitions; still read-only
+ *
+ * Milestone 3c (previous): SMU test. Mainline writes MPSCTRL0 = 0x71
  * (no SECURE_READ); Samsung's own bypass is 0xF1 (dw_mmc-exynos.h:212).
  *  - show EMMCP SMU registers as found, write Samsung's bypass, read back
  *  - re-run the read-only clock sweep and partition listing
@@ -197,6 +205,8 @@ static void show_emmc(void)
 	puts_(" partitions\n");
 }
 
+static long long now_ms(void);
+
 static unsigned int rd32(volatile unsigned int *base, unsigned int off)
 {
 	return base[off / 4];
@@ -276,24 +286,57 @@ static void show_smu(volatile unsigned int *e, const char *when)
 	puts_(" END0 "); puthex(rd32(e, MPSEND0)); puts_("\n");
 }
 
-static void smu_samsung_bypass(void)
+static void show_smu_kernel(void)
 {
-	int fd = open("/dev/mem", O_RDWR | O_SYNC);
+	int fd = open("/dev/mem", O_RDONLY | O_SYNC);
 	volatile unsigned int *e;
 
 	if (fd < 0)
 		return;
-	e = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, EMMCP_BASE);
+	e = mmap(NULL, 0x1000, PROT_READ, MAP_SHARED, fd, EMMCP_BASE);
 	close(fd);
-	if (e == MAP_FAILED) {
-		puts_(" smu    : map failed\n");
-		return;
+	if (e != MAP_FAILED)
+		show_smu(e, "kernel");
+}
+
+static void show_ios(void)
+{
+	static char buf[1024];
+	char *p, *line;
+
+	read_file("/sys/kernel/debug/mmc0/ios", buf, sizeof(buf));
+	for (line = buf; line && *line; line = p) {
+		p = strchr(line, '\n');
+		if (p)
+			*p++ = 0;
+		if (strstr(line, "clock:") || strstr(line, "bus width:") ||
+		    strstr(line, "timing spec:") || strstr(line, "signal voltage:")) {
+			puts_(" ios    : "); puts_(line); puts_("\n");
+		}
 	}
-	show_smu(e, "found ");
-	e[MPSBEGIN0 / 4] = 0;
-	e[MPSEND0 / 4] = 0xffffffff;
-	e[MPSCTRL0 / 4] = MPSCTRL_SAMSUNG_BYPASS;
-	show_smu(e, "bypass");
+}
+
+/* Uncached sequential read of 32 MiB from the start of the eMMC */
+static void read_speed(void)
+{
+	static char buf[1 << 20];
+	int fd = open("/dev/mmcblk0", O_RDONLY);
+	long long t0, ms;
+	int mib = 0;
+
+	if (fd < 0)
+		return;
+	ioctl(fd, BLKFLSBUF, 0);
+	t0 = now_ms();
+	while (mib < 32 && read(fd, buf, sizeof(buf)) == (ssize_t)sizeof(buf))
+		mib++;
+	ms = now_ms() - t0;
+	close(fd);
+	puts_(" speed  : read "); puts_(utoa(mib)); puts_(" MiB in ");
+	puts_(utoa((unsigned int)ms)); puts_(" ms = ");
+	puts_(utoa(ms ? (unsigned int)(mib * 1000LL * 10 / ms) / 10 : 0)); puts_(".");
+	puts_(utoa(ms ? (unsigned int)(mib * 1000LL * 10 / ms) % 10 : 0));
+	puts_(" MiB/s\n");
 }
 
 static void write_str(const char *path, const char *v)
@@ -304,75 +347,6 @@ static void write_str(const char *path, const char *v)
 		write(fd, v, strlen(v));
 		close(fd);
 	}
-}
-
-/* Read the GPT header (LBA 1) and 64 KiB from the start, bypassing caches */
-static int emmc_read_ok(void)
-{
-	static char buf[65536];
-	int fd = open("/dev/mmcblk0", O_RDONLY), ok;
-
-	if (fd < 0)
-		return 0;
-	ioctl(fd, BLKFLSBUF, 0);
-	ok = lseek(fd, 0, SEEK_SET) == 0 &&
-	     read(fd, buf, sizeof(buf)) == (ssize_t)sizeof(buf) &&
-	     memcmp(buf + 512, "EFI PART", 8) == 0;
-	close(fd);
-	return ok;
-}
-
-static void emmc_clock_sweep(void)
-{
-	static const unsigned int f[] = {
-		400000, 1000000, 5000000, 10000000, 20000000,
-		26000000, 40000000, 52000000,
-	};
-	unsigned int best = 0;
-	int fd, ro = 1;
-
-	for (int i = 0; i < 30 && (fd = open("/dev/mmcblk0", O_RDONLY)) < 0; i++)
-		msleep(200);
-	if (fd < 0) {
-		puts_(" sweep  : mmcblk0 missing\n");
-		return;
-	}
-	ioctl(fd, BLKROSET, &ro);
-	close(fd);
-
-	mkdir("/sys/kernel/debug", 0755);
-	mount("debugfs", "/sys/kernel/debug", "debugfs", 0, NULL);
-	write_str("/proc/sys/kernel/printk", "1");	/* keep I/O errors off screen */
-
-	puts_(" sweep  :");
-	for (unsigned int i = 0; i < sizeof(f) / sizeof(f[0]); i++) {
-		int ok;
-
-		write_str("/sys/kernel/debug/mmc0/clock", utoa(f[i]));
-		msleep(50);
-		ok = emmc_read_ok() && emmc_read_ok();
-		puts_(" ");
-		puts_(utoa(f[i] / 100000 / 10)); puts_(".");
-		puts_(utoa(f[i] / 100000 % 10));
-		puts_(ok ? ":OK" : ":FAIL");
-		if (ok)
-			best = f[i];
-	}
-	puts_(" (MHz)\n");
-
-	if (best) {
-		write_str("/sys/kernel/debug/mmc0/clock", utoa(best));
-		fd = open("/dev/mmcblk0", O_RDONLY);
-		if (fd >= 0) {
-			ioctl(fd, BLKRRPART, 0);
-			close(fd);
-		}
-		msleep(300);
-		puts_(" sweep  : using "); putmhz(best); puts_(", partitions rescanned\n");
-	} else {
-		puts_(" sweep  : no frequency passed\n");
-	}
-	write_str("/proc/sys/kernel/printk", "7");
 }
 
 static long long now_ms(void)
@@ -407,7 +381,7 @@ int main(void)
 	console_no_echo();
 
 	puts_("\n\n=========================================\n");
-	puts_(" Galaxy A5 (2017) - mainline Linux M3c\n");
+	puts_(" Galaxy A5 (2017) - mainline Linux M3d\n");
 	puts_("=========================================\n");
 	puts_(" kernel : "); puts_(u.release); puts_(" "); puts_(u.machine); puts_("\n");
 	puts_(" cpus   : "); puts_(cpus); puts_("\n");
@@ -436,9 +410,12 @@ int main(void)
 
 	write_str("/proc/sys/kernel/printk", "1");
 	show_mmc_clock();
-	smu_samsung_bypass();
-	emmc_clock_sweep();
 	show_emmc();
+	show_smu_kernel();
+	mkdir("/sys/kernel/debug", 0755);
+	mount("debugfs", "/sys/kernel/debug", "debugfs", 0, NULL);
+	show_ios();
+	read_speed();
 	write_str("/proc/sys/kernel/printk", "7");
 
 	puts_("\n Press Power, Volume Up, Volume Down, Home.\n");
