@@ -8,6 +8,14 @@ This project is separate from the Sailfish work (`~/hadk`, `~/sfos`) and never t
 
 The repo name is historical. The earlier XNU/iOS investigation is closed, and the step 1 uniLoader hardware probe is kept for history. All confirmed hardware facts are in `EVIDENCE.md`.
 
+## Status
+
+- **Milestone 1: passed on the real phone (2026-10-18).**
+  - Linux 7.2 boots with all 8 cores and 2.6 GB of RAM.
+  - The console shows on screen, and the panel refreshes by itself.
+  - Reboot to TWRP works.
+  - See EVIDENCE.md section 15.
+
 ## Mainline milestone 1: boot to a console on screen
 
 ```bash

@@ -248,12 +248,33 @@ A full port needs a 7880 clock-driver variant. Milestone 1 needs no clocks.
 - The phone landing in TWRP at t = 180 means the reboot-mode node works.
 - If the screen shows nothing and the phone never reboots, Linux did not reach init.
 
+## 15. Hardware result: mainline milestone 1 BOOTS on the phone (2026-10-18)
+
+**Test.** Image `a5y17lte-mainline-m1-boot.img` (sha256 e51aeb39…cb778e). Photos:
+
+- `evidence/hw-mainline-m1-phaseA-2026-10-18.jpg`
+- `evidence/hw-mainline-m1-phaseB-2026-10-18.jpg`
+
+A video was also taken.
+
+| Observation | Meaning |
+|---|---|
+| S-Boot loaded U-Boot and the FIT, and Linux ran | The whole boot chain works on hardware. |
+| `CPU: All CPU(s) started at EL1` | All CPUs started at EL1. |
+| `cpus : 0-7` | All 8 Cortex-A53 cores came up via PSCI `smc`, both clusters. |
+| `Memory: 2596712K/3145728K available (… 544660K reserved)`; MemTotal 2602468 kB | The no-map carve-outs are honoured. |
+| `/soc@0/interrupt-controller@106e1000` probed | GIC at 0x106E1000 works. |
+| `clocksource: Switched to clocksource arch_sys_counter` | The 26 MHz timer from the DT works. |
+| `simple-framebuffer 67000000.framebuffer: fb0`, format a8r8g8b8, 1080x1920x32, linelength 4320; `Console: … 67x60` | The boot framebuffer works as a Linux console. |
+| `Run /init as init process` | Userspace reached; no panics or oopses on screen. |
+| **Phase A counter visible at t = 9 s**, before the software refresh started | **The panel refreshes by itself** with DECON HW_SW_TRIG_CONTROL = 0x10 (HW/TE trigger, unmasked, no auto-mask). The hypothesis in section 13 is **confirmed**. |
+| At t ≈ 180 the phone **rebooted straight into TWRP** (Jimmy, 2026-10-19 00:27) | `syscon-reboot` (PMU+0x400) and `syscon-reboot-mode` (INFORM3 = 0x12345674) both work under Linux. |
+
+**Still open:** the exact load addresses S-Boot uses (TWRP readings not taken yet). They didn't matter here, because position-independent U-Boot coped.
+
 ## Open items
 
-1. **Phone test of milestone 1:**
-   - Does Linux reach init?
-   - Does the TE refresh work?
-   - Does reboot-to-recovery work?
+1. ~~Phone test of milestone 1~~: passed in full (section 15).
 2. **TWRP readings** (`/proc/iomem`, `/proc/cmdline`, `/proc/device-tree`, `chosen/linux,initrd-start`):
    - where S-Boot really loads the ramdisk (FIT), to confirm it cannot overlap the kernel at 0x48000000
    - the real memory map
