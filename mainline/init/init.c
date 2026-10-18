@@ -11,7 +11,17 @@
  * Milestone 2 (confirmed on hardware, EVIDENCE.md section 16a):
  *  - Power, Volume Up/Down produce key events; Power held 3 s -> TWRP.
  *
- * Milestone 3 (this build): eMMC, strictly read-only.
+ * Milestone 3 result (EVIDENCE.md section 17a): card identified, but data
+ * reads fail at 50 MHz while EXT_CSD read at ~300 kHz worked.
+ *
+ * Milestone 3b (this build): diagnose the eMMC clock, strictly read-only.
+ *  - read CMU_CCORE (Samsung S5E7880-cmusfr.h / -cmu.c / -pll.c) and show
+ *    the real MMC0 clock S-Boot left: BUS_PLL/MEDIA_PLL /2, then DIV
+ *  - sweep the card clock via debugfs (mmc0/clock), and at each step read
+ *    the GPT header uncached; report pass/fail per frequency
+ *  - keep the fastest passing clock, rescan partitions, list them
+ *
+ * Milestone 3 (previous build): eMMC, strictly read-only.
  *  - the whole eMMC is set read-only (BLKROSET) before anything is read
  *  - shows the card name, size and partition names, and checks the GPT
  *    header signature in LBA 1
@@ -179,6 +189,147 @@ static void show_emmc(void)
 	puts_(" partitions\n");
 }
 
+static unsigned int rd32(volatile unsigned int *base, unsigned int off)
+{
+	return base[off / 4];
+}
+
+static void puthex(unsigned int v)
+{
+	char b[11] = "0x00000000";
+
+	for (int i = 0; i < 8; i++)
+		b[9 - i] = "0123456789abcdef"[(v >> (i * 4)) & 0xf];
+	puts_(b);
+}
+
+static void putmhz(unsigned long long hz)
+{
+	puts_(utoa((unsigned int)(hz / 1000000)));
+	puts_(".");
+	puts_(utoa((unsigned int)((hz / 100000) % 10)));
+	puts_(" MHz");
+}
+
+/* f = 26 MHz * M / (P << S), Samsung S5E7880-pll.c pll141xx */
+static unsigned long long pll141xx(unsigned int con0)
+{
+	unsigned int m = (con0 >> 16) & 0x3ff, p = (con0 >> 8) & 0x3f, s = con0 & 7;
+
+	if (!(con0 & (1u << 31)) || !p)
+		return 0;
+	return 26000000ULL * m / ((unsigned long long)p << s);
+}
+
+static void show_mmc_clock(void)
+{
+	int fd = open("/dev/mem", O_RDONLY | O_SYNC);
+	volatile unsigned int *cc;
+	unsigned int media, bus, mux, div;
+	unsigned long long parent, rate;
+
+	if (fd < 0)
+		return;
+	cc = mmap(NULL, 0x1000, PROT_READ, MAP_SHARED, fd, 0x10680000);	/* CMU_CCORE */
+	close(fd);
+	if (cc == MAP_FAILED) {
+		puts_(" clk    : CMU_CCORE map failed\n");
+		return;
+	}
+	media = rd32(cc, 0x120);	/* MEDIA_PLL_CON0 */
+	bus = rd32(cc, 0x140);		/* BUS_PLL_CON0 */
+	mux = rd32(cc, 0x288);		/* CLK_CON_MUX_CLKCMU_FSYS_MMC0, bit 12 */
+	div = rd32(cc, 0x488);		/* CLK_CON_DIV_CLKCMU_FSYS_MMC0, bits 0-9 */
+
+	puts_(" clk    : BUS_PLL "); puthex(bus); puts_(" = "); putmhz(pll141xx(bus)); puts_("\n");
+	puts_(" clk    : MEDIA_PLL "); puthex(media); puts_(" = "); putmhz(pll141xx(media)); puts_("\n");
+	puts_(" clk    : MMC0 mux "); puthex(mux); puts_(" div "); puthex(div); puts_("\n");
+	parent = ((mux >> 12) & 1) ? pll141xx(media) / 2 : pll141xx(bus) / 2;
+	rate = parent / ((div & 0x3ff) + 1);
+	puts_(" clk    : MMC0 CIU = "); putmhz(rate);
+	puts_((mux >> 12) & 1 ? " (MEDIA_PLL/2" : " (BUS_PLL/2");
+	puts_(" / "); puts_(utoa((div & 0x3ff) + 1)); puts_(")\n");
+}
+
+static void write_str(const char *path, const char *v)
+{
+	int fd = open(path, O_WRONLY);
+
+	if (fd >= 0) {
+		write(fd, v, strlen(v));
+		close(fd);
+	}
+}
+
+/* Read the GPT header (LBA 1) and 64 KiB from the start, bypassing caches */
+static int emmc_read_ok(void)
+{
+	static char buf[65536];
+	int fd = open("/dev/mmcblk0", O_RDONLY), ok;
+
+	if (fd < 0)
+		return 0;
+	ioctl(fd, BLKFLSBUF, 0);
+	ok = lseek(fd, 0, SEEK_SET) == 0 &&
+	     read(fd, buf, sizeof(buf)) == (ssize_t)sizeof(buf) &&
+	     memcmp(buf + 512, "EFI PART", 8) == 0;
+	close(fd);
+	return ok;
+}
+
+static void emmc_clock_sweep(void)
+{
+	static const unsigned int f[] = {
+		400000, 1000000, 5000000, 10000000, 20000000,
+		26000000, 40000000, 52000000,
+	};
+	unsigned int best = 0;
+	int fd, ro = 1;
+
+	for (int i = 0; i < 30 && (fd = open("/dev/mmcblk0", O_RDONLY)) < 0; i++)
+		msleep(200);
+	if (fd < 0) {
+		puts_(" sweep  : mmcblk0 missing\n");
+		return;
+	}
+	ioctl(fd, BLKROSET, &ro);
+	close(fd);
+
+	mkdir("/sys/kernel/debug", 0755);
+	mount("debugfs", "/sys/kernel/debug", "debugfs", 0, NULL);
+	write_str("/proc/sys/kernel/printk", "1");	/* keep I/O errors off screen */
+
+	puts_(" sweep  :");
+	for (unsigned int i = 0; i < sizeof(f) / sizeof(f[0]); i++) {
+		int ok;
+
+		write_str("/sys/kernel/debug/mmc0/clock", utoa(f[i]));
+		msleep(50);
+		ok = emmc_read_ok() && emmc_read_ok();
+		puts_(" ");
+		puts_(utoa(f[i] / 100000 / 10)); puts_(".");
+		puts_(utoa(f[i] / 100000 % 10));
+		puts_(ok ? ":OK" : ":FAIL");
+		if (ok)
+			best = f[i];
+	}
+	puts_(" (MHz)\n");
+
+	if (best) {
+		write_str("/sys/kernel/debug/mmc0/clock", utoa(best));
+		fd = open("/dev/mmcblk0", O_RDONLY);
+		if (fd >= 0) {
+			ioctl(fd, BLKRRPART, 0);
+			close(fd);
+		}
+		msleep(300);
+		puts_(" sweep  : using "); putmhz(best); puts_(", partitions rescanned\n");
+	} else {
+		puts_(" sweep  : no frequency passed\n");
+	}
+	write_str("/proc/sys/kernel/printk", "7");
+}
+
 static long long now_ms(void)
 {
 	struct timespec ts;
@@ -211,7 +362,7 @@ int main(void)
 	console_no_echo();
 
 	puts_("\n\n=========================================\n");
-	puts_(" Galaxy A5 (2017) - mainline Linux M3\n");
+	puts_(" Galaxy A5 (2017) - mainline Linux M3b\n");
 	puts_("=========================================\n");
 	puts_(" kernel : "); puts_(u.release); puts_(" "); puts_(u.machine); puts_("\n");
 	puts_(" cpus   : "); puts_(cpus); puts_("\n");
@@ -238,7 +389,11 @@ int main(void)
 	if (!nfds)
 		puts_(" input  : NONE FOUND (gpio-keys did not probe)\n");
 
+	write_str("/proc/sys/kernel/printk", "1");
+	show_mmc_clock();
+	emmc_clock_sweep();
 	show_emmc();
+	write_str("/proc/sys/kernel/printk", "7");
 
 	puts_("\n Press Power, Volume Up, Volume Down, Home.\n");
 	puts_(" Hold POWER for 3 s to reboot into TWRP.\n\n");

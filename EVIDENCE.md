@@ -382,6 +382,45 @@ The only difference is the SDR drive phase: 2 on the 7880, 4 on the 7870.
 - `GPT header OK`
 - a list of Samsung partition names (BOOT, RECOVERY, SYSTEM, USERDATA and so on)
 
+### 17a. Hardware result for M3 (2026-10-19 00:58)
+
+Photo: `evidence/hw-mainline-m3-emmc-2026-10-19.jpg`. After pressing Power, the phone returned to TWRP, so the hold-Power exit still works.
+
+**Working:**
+
+- `mmcblk0: mmc0:0001 BJNB4R 29.1 GiB` (the init shows `BJNB4R, 29820 MiB`).
+- `mmcblk0boot0`, `mmcblk0boot1` (4 MiB each) and `mmcblk0rpmb` all registered.
+- The read-only lock took effect (`mmcblk0 set READ-ONLY`).
+- So command transfers work, and so does the EXT_CSD data read: the size comes from EXT_CSD SEC_COUNT. That was at about 300 kHz.
+
+**Failing:**
+
+- `mmc0: error -110 whilst initialising MMC card` on the first attempt; the retry succeeded.
+- At HS 52 MHz (`Bus speed = 200000000Hz (req 52000000Hz, actual 50000000HZ div = 2)`):
+  - `switch to bus width 8 failed` and `switch to bus width 4 failed`
+  - every data read gives `I/O error ... sector 0`
+  - `unable to read partition table`
+- The init reports `read of LBA 1 FAILED` and `0 partitions`.
+
+**Interpretation:**
+
+- The data path works slowly and fails at 50 MHz.
+- With fixed clocks the driver assumes a 200 MHz `cclk_in` and divides by 2 in CLKDIV. Mainline Exynos normally sets the CIU clock to exactly `wanted × (ciu_div + 1)` (`dw_mci_exynos_adjust_clock`) and leaves CLKDIV bypassed. So the drive/sample phase settings are applied under conditions the real driver never uses.
+- **The real CIU rate is unknown.**
+
+**Samsung's clock path for MMC0.** Taken from `S5E7880-cmu.c:308,400,545` and `-cmusfr.h`:
+
+- The mux is CMU_CCORE+0x288, bit 12, selecting BUS_PLL/2 or MEDIA_PLL/2.
+- The divider is CMU_CCORE+0x488, bits 0–9.
+- PLL_CON0 is at +0x140 (BUS) and +0x120 (MEDIA).
+- The pll141xx formula is f = 26 MHz × M / (P << S), with M in bits 16–25, P in bits 8–13, S in bits 0–2, and enable in bit 31.
+
+**Next build: M3b (diagnostic, still read-only):**
+
+- It shows the real MMC0 CIU rate from those registers.
+- It sweeps the card clock through debugfs (0.4 to 52 MHz) and does an uncached 64 KiB read plus a GPT check at each step.
+- It keeps the fastest passing rate and lists the partitions.
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).
