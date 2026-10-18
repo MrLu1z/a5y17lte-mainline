@@ -164,10 +164,11 @@ Photo: `evidence/hw-step1b-2026-10-18.jpg`. uniLoader built 02:28:46 (commit 79c
 - `BCM2837.h` does not define it, so the A53 target uses `ARM_PGSHIFT 12` (4 KB, `proc_reg.h:1149-1152`). This matches the hardware.
 - The iOS 7.1.2 (A7) kernel also uses 4 KB pages.
 
-**Not yet confirmed**
+**Reboot (confirmed by Jimmy, 11:37)**
 
-- Whether the PMU auto-reboot fired.
-- Whether the countdown takes about 30 s at an assumed 26 MHz.
+- The phone reboots by itself about every 30 s and loops back into step 1b.
+- This shows that PMU `SWRESET` (`0x106B0400` = 1) works from EL1.
+- It also shows that the physical counter runs at about 26 MHz, so the 26 MHz timer from the device tree is correct.
 
 ## Open items
 
