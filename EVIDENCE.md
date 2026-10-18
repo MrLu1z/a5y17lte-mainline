@@ -1,4 +1,6 @@
-# XNU on Galaxy A5 2017 (a5y17lte, Exynos 7880) — Evidence Log
+# Galaxy A5 2017 (a5y17lte, Exynos 7880): evidence log
+
+> **Direction change (2026-10-18):** the XNU/iOS investigation (sections 1–8) is closed. The project now targets **mainline Linux / postmarketOS** booted by mainline U-Boot (sections 13+). The hardware facts in sections 9–12 apply unchanged.
 
 Every claim below was checked against source on 2026-10-18. Sources are in `upstream/`.
 
@@ -170,9 +172,99 @@ Photo: `evidence/hw-step1b-2026-10-18.jpg`. uniLoader built 02:28:46 (commit 79c
 - This shows that PMU `SWRESET` (`0x106B0400` = 1) works from EL1.
 - It also shows that the physical counter runs at about 26 MHz, so the 26 MHz timer from the device tree is correct.
 
+## 13. Mainline Linux, milestone 1: sources and decisions (2026-10-18)
+
+**Base versions:** Linux **v7.2** (8d3ae5928, 2026-08-16), U-Boot **v2026.10** (55084065).
+
+**What mainline already has.** In v7.2 the 7870 sibling has:
+
+- `exynos7870.dtsi`, `clk-exynos7870.c` and 7870 pinctrl
+- five phones: a2corelte, j5y17lte, j6lte, j7xelte, on7xelte
+
+There is no 7880 support yet.
+
+**7880 compared with 7870.** Taken from the Samsung `pwrcal S5E78x0-sfrbase.h` files and the DTS.
+
+| Block | Status |
+|---|---|
+| CMU PERI, FSYS, G3D, DISPAUD, ISP, MFCMSCL, CPUCL0/1 | Same addresses |
+| UARTs, MMC, USB, I2C, DECON, pinctrl ALIVE/FSYS/TOUCH | Same addresses |
+| CMU_MIF | 7870 has one at 0x10460000; 7880 has CMU_MIF0 at 0x10450000, CMU_MIF1 at 0x10550000 and CMU_CCORE at 0x10680000 |
+| GIC | 0x104E1000 on 7870 vs **0x106E1000** on 7880 |
+| PMU | 0x10480000 on 7870 vs **0x106B0000** on 7880 |
+| MIF pinctrl | 0x10530000 on 7870 vs 0x10630000 on 7880 |
+
+A full port needs a 7880 clock-driver variant. Milestone 1 needs no clocks.
+
+**Cross-checks against independent sources:**
+
+- **CNTFRQ.** Mainline `exynos7870.dtsi` hard-codes `clock-frequency = <26000000>` with the comment "Non-updatable, broken stock Samsung bootloader does not configure CNTFRQ_EL0". This matches our hardware reading CNTFRQ_EL0 = 0 (section 12).
+- **Reboot modes.** On the 7880, Samsung `sec_ext.h` puts INFORM3 at PMU+0x80C, and `sec_reboot.c` uses prefix 0x12345670 with the codes download=1, recovery=4, bootloader=0xd. These are identical to the mainline 7870 `syscon-reboot-mode` values.
+
+**Display.** The panel is MIPI command mode (`psr_mode = <2>`, `trig_mode = <0>`).
+
+- Samsung `decon_reg_configure_trigger` (decon_reg_7880.c:384) sets HW_TRIG_EN, and `decon_reg_set_trigger` unmasks HW_TRIG_MASK.
+- So the init writes HW_SW_TRIG_CONTROL = 0x10 (HW trigger, unmasked, no auto-mask). This is a **hypothesis to be confirmed on the phone**.
+- The fallback is step 1b's software trigger (0x1000 then 0x1100) through /dev/mem.
+
+**Memory.** Taken from Samsung `exynos7880-rmem.dtsi`.
+
+- Bank 0 is 0x40000000 + 0x3E400000; bank 1 is 0x80000000 + 0x80000000.
+- 0x7E400000–0x80000000 is secure DRAM.
+- M1 marks every Samsung carve-out no-map, plus 0x67000000–0x7E400000 (framebuffer, modem, gnss and ION).
+
+**U-Boot facts (v2026.10):**
+
+- **DRAM banks.** `board/samsung/common/board.c` sizes DRAM as 12×256 MB from 0x40000000 using `get_ram_size()`.
+- **Memory fixup.** U-Boot rewrites the kernel's `/memory` node to those banks, **including the secure hole**. M1's DTS therefore lists `secure-dram@7e400000` as no-map explicitly. This was confirmed in emulation: the fixed-up `/memory` has 12 contiguous banks, and every no-map node survives.
+- **Boot command.** `bootcmd=source $prevbl_initrd_start_addr:bootscript` (include/configs/exynos78x0-common.h). S-Boot's ramdisk carries a FIT that contains the boot script.
+- **Load address.** `a5y17lte_defconfig` is linked at 0x40001000 and is **not** position-independent. S-Boot's real load address is unknown, so M1 enables `CONFIG_POSITION_INDEPENDENT` ("almost any 4K aligned address").
+- **Toolchain.**
+  - **ld.lld cannot link U-Boot's arm64 image.** `arch/arm/cpu/armv8/u-boot.lds` places `.bss ADDR(.rela.dyn) (OVERLAY)`. ld.lld put `__bss_start` at 0x0, so U-Boot computed `Monitor len: c00086d0`, reserved about 3 GB, and wrote below RAM. This was found in emulation with a DEBUG build.
+  - **GNU ld fixes it.** The xPack aarch64-none-elf GCC 14.2.1-1.1 (ld 2.43.1, sha256 a2c9731f…b117, matching the release .sha) gives `__bss_start` 0x40067a60 and `__bss_end` 0x40071120.
+
+## 14. Milestone 1 build and emulation (2026-10-18)
+
+**Image.** `out/a5y17lte-mainline-m1-boot.img` contains:
+
+- **kernel:** u-boot.bin (491 KB)
+- **ramdisk:** FIT (5.8 MB) holding the Linux 7.2 Image (6,078,472 B, sha256 33ebee32…), the DTB, the initramfs (nolibc init) and the boot script
+
+**Emulation** (`tools/emulate_uboot.py`, log in `out/emulated-uboot-m1.log`):
+
+- U-Boot was started at 0x40080000, 0x40001000 and 0x40000000, with the FIT at 0x41000000 and at 0x5A000000.
+- In every combination U-Boot:
+  - printed `DRAM: 3 GiB`
+  - ran the FIT boot script and verified all sha256 hashes
+  - loaded the kernel at 0x48000000 (`ARMd` magic), the initrd at 0x4FFFF000 and the FDT at 0x4FFFB000
+  - jumped to Linux with x0 = the FDT
+
+**Limit.** Unicorn cannot follow Linux past `__enable_mmu`: it raises an unhandled prefetch abort (exception type 3). Linux itself is therefore unverified until the phone test.
+
+**What the phone test shows:**
+
+- Text appearing before t = 15 means the TE hardware refresh works.
+- Text appearing only at t = 15 means the software refresh works and TE does not.
+- The phone landing in TWRP at t = 180 means the reboot-mode node works.
+- If the screen shows nothing and the phone never reboots, Linux did not reach init.
+
 ## Open items
 
-1. A UART cable for the A5 (USB-C debug UART), or framebuffer-only console.
-2. The framebuffer physical address.
-3. Whether GIC Group 0 / FIQ is usable from EL1 under Samsung's EL3.
-4. A build toolchain: XNU is normally built with Apple's toolchain, so a Linux build needs community tooling. Not evaluated yet.
+1. **Phone test of milestone 1:**
+   - Does Linux reach init?
+   - Does the TE refresh work?
+   - Does reboot-to-recovery work?
+2. **TWRP readings** (`/proc/iomem`, `/proc/cmdline`, `/proc/device-tree`, `chosen/linux,initrd-start`):
+   - where S-Boot really loads the ramdisk (FIT), to confirm it cannot overlap the kernel at 0x48000000
+   - the real memory map
+3. **Shrinking the carve-outs:** decide which M1 no-map regions are truly secure and which can return to Linux.
+4. **Next milestones:**
+   - 7880 clock driver (MIF0/MIF1/CCORE)
+   - pinctrl, then gpio-keys
+   - UART
+   - MMC (eMMC/SD)
+   - USB gadget networking
+   - touch
+   - DSI/DECON (Linux 6.18+ has the 7870 DSIM)
+   - postmarketOS device package
+5. ~~Framebuffer address~~ confirmed in section 12. ~~UART cable~~ not needed; the screen is the console.

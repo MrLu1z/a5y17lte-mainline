@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Samsung Exynos 7880 SoC device tree source - milestone 1 (boot to console)
+ *
+ * Only blocks that need no clock driver: CPUs (PSCI), GIC, architected
+ * timer and the PMU (for reboot). Clock controllers, pinctrl, UART etc.
+ * come in later milestones.
+ *
+ * Sources for every value:
+ *  [D] Samsung universal7880 kernel, hybris-17.1: arch/arm64/boot/dts/exynos7880.dtsi
+ *  [M] Linux v7.2 arch/arm64/boot/dts/exynos/exynos7870.dtsi (sibling SoC)
+ *  [H] a5y17lte hardware readings, EVIDENCE.md sections 12
+ */
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+	compatible = "samsung,exynos7880";
+	#address-cells = <2>;
+	#size-cells = <1>;
+
+	interrupt-parent = <&gic>;
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu-map {
+			cluster0 {
+				core0 { cpu = <&cpu0>; };
+				core1 { cpu = <&cpu1>; };
+				core2 { cpu = <&cpu2>; };
+				core3 { cpu = <&cpu3>; };
+			};
+
+			cluster1 {
+				core0 { cpu = <&cpu4>; };
+				core1 { cpu = <&cpu5>; };
+				core2 { cpu = <&cpu6>; };
+				core3 { cpu = <&cpu7>; };
+			};
+		};
+
+		/* [D] cpu@0..3, cpu@100..103, all cortex-a53, enable-method psci;
+		 * [H] boot CPU MIDR 0x410fd034, MPIDR 0x80000000 */
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x0>;
+			enable-method = "psci";
+		};
+
+		cpu1: cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x1>;
+			enable-method = "psci";
+		};
+
+		cpu2: cpu@2 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x2>;
+			enable-method = "psci";
+		};
+
+		cpu3: cpu@3 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x3>;
+			enable-method = "psci";
+		};
+
+		cpu4: cpu@100 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x100>;
+			enable-method = "psci";
+		};
+
+		cpu5: cpu@101 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x101>;
+			enable-method = "psci";
+		};
+
+		cpu6: cpu@102 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x102>;
+			enable-method = "psci";
+		};
+
+		cpu7: cpu@103 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x103>;
+			enable-method = "psci";
+		};
+	};
+
+	/* [D] psci: method smc, cpu_suspend 0xC4000001 (same IDs as [M]) */
+	psci {
+		compatible = "arm,psci";
+		method = "smc";
+		cpu_suspend = <0xc4000001>;
+		cpu_off = <0x84000002>;
+		cpu_on = <0xc4000003>;
+	};
+
+	soc: soc@0 {
+		compatible = "simple-bus";
+		ranges = <0x0 0x0 0x0 0x20000000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/*
+		 * [D] system-controller@106B0000, 0x10000 long. Plain syscon for now
+		 * (no exynos-pmu driver): used only for reset and reboot modes.
+		 */
+		pmu_system_controller: system-controller@106b0000 {
+			compatible = "syscon", "simple-mfd";
+			reg = <0x106b0000 0x10000>;
+
+			/* Samsung exynos-reboot.c: EXYNOS_PMU_SWRESET (0x400) = 1;
+			 * [H] confirmed: resets the phone (step 1b) */
+			reboot {
+				compatible = "syscon-reboot";
+				offset = <0x400>;
+				value = <0x1>;
+				mask = <0x1>;
+			};
+
+			/* Samsung sec_ext.h: INFORM3 = 0x80C; sec_reboot.c:
+			 * prefix 0x12345670 | 1 download, 4 recovery, 0xd bootloader
+			 * (identical values in [M]) */
+			reboot-mode {
+				compatible = "syscon-reboot-mode";
+				offset = <0x080c>;
+				mode-bootloader = <0x1234567d>;
+				mode-download = <0x12345671>;
+				mode-recovery = <0x12345674>;
+			};
+		};
+
+		/* [D] gic: interrupt-controller@106E1000, 4 regions, PPI 9 */
+		gic: interrupt-controller@106e1000 {
+			compatible = "arm,cortex-a15-gic";
+			reg = <0x106e1000 0x1000>,
+			      <0x106e2000 0x1000>,
+			      <0x106e4000 0x2000>,
+			      <0x106e6000 0x2000>;
+			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(8) |
+						 IRQ_TYPE_LEVEL_HIGH)>;
+			interrupt-controller;
+			#address-cells = <0>;
+			#interrupt-cells = <3>;
+		};
+	};
+
+	/* [D] PPIs 13 14 11 10; [M] same; [H] CNTFRQ_EL0 = 0 so the
+	 * frequency must come from here (26 MHz, [D] and [M]) */
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
+		clock-frequency = <26000000>;
+	};
+};

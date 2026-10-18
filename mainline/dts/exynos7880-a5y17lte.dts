@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Samsung Galaxy A5 (2017), SM-A520F - milestone 1 (boot to console)
+ *
+ *  [D] Samsung universal7880 kernel: exynos7880-a5y17lte_common.dtsi,
+ *      exynos7880-rmem.dtsi
+ *  [H] a5y17lte hardware readings, EVIDENCE.md section 12
+ */
+
+/dts-v1/;
+#include "exynos7880.dtsi"
+
+/ {
+	model = "Samsung Galaxy A5 (2017)";
+	compatible = "samsung,a5y17lte", "samsung,exynos7880";
+	chassis-type = "handset";
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+
+		bootargs = "console=tty0 loglevel=7 panic=20 clk_ignore_unused pd_ignore_unused fbcon=font:TER16x32";
+
+		/* [H] 0x67000000, 1080x1920, ARGB8888 (R G B W bars confirmed) */
+		framebuffer@67000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0x67000000 (1080 * 1920 * 4)>;
+			width = <1080>;
+			height = <1920>;
+			stride = <(1080 * 4)>;
+			format = "a8r8g8b8";
+		};
+	};
+
+	/* [D] memory@40000000 0x3E400000 and memory@80000000 0x80000000 (3 GB) */
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x40000000 0x3e400000>,
+		      <0x0 0x80000000 0x80000000>;
+	};
+
+	/*
+	 * Milestone 1 is conservative: every Samsung carve-out is no-map, so
+	 * Linux never touches memory that firmware, modem or the secure world
+	 * may own. [D] rmem: 0x7E400000-0x80000000 is secure DRAM and is
+	 * already outside the memory node above.
+	 */
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+
+		/* [D] extra_info */
+		extra-info@45fff000 {
+			reg = <0x0 0x45fff000 0x1000>;
+			no-map;
+		};
+
+		/* [D] tima_region (Samsung TIMA) */
+		tima@52800000 {
+			reg = <0x0 0x52800000 0x200000>;
+			no-map;
+		};
+
+		/* [H] boot framebuffer, then [D] dram_init 0x67FFF000, modem_if
+		 * 0x68000000, gnss_if 0x70000000, /memreserve/ 0x70400000,
+		 * gpu_crc, gpu_buffer, crypto, video_nfw/fw/stream/frame up to
+		 * 0x7C800000; whole range kept out until it is understood */
+		framebuffer@67000000 {
+			reg = <0x0 0x67000000 0x17400000>;
+			no-map;
+		};
+
+		/*
+		 * [D] rmem.dtsi: "0x7E400000 ~ 0x80000000 is used for secure DRAM".
+		 * Outside the memory node above, but U-Boot (board/samsung/common
+		 * dram_init_banksize) reports 0x40000000-0x100000000 as contiguous
+		 * banks and rewrites /memory on boot, so keep it out explicitly.
+		 */
+		secure-dram@7e400000 {
+			reg = <0x0 0x7e400000 0x1c00000>;
+			no-map;
+		};
+
+		/* [D] video_scaler (secure ION) */
+		video-scaler@80000000 {
+			reg = <0x0 0x80000000 0x3c00000>;
+			no-map;
+		};
+	};
+};

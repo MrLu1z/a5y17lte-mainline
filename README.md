@@ -1,8 +1,45 @@
-# xnu-a5y17lte
+# a5y17lte: mainline Linux on the Galaxy A5 (2017)
 
-Porting open-source XNU to the Samsung Galaxy A5 (2017), a5y17lte (Exynos 7880), using uniLoader as the bootloader.
+Bringing **mainline Linux (and later postmarketOS)** to the Samsung Galaxy A5 2017 (a5y17lte, Exynos 7880). The boot chain is:
+
+Samsung S-Boot → mainline **U-Boot** (`a5y17lte_defconfig`) → **Linux v7.2** with a new `exynos7880-a5y17lte` device tree.
 
 This project is separate from the Sailfish work (`~/hadk`, `~/sfos`) and never touches it.
+
+The repo name is historical. The earlier XNU/iOS investigation is closed, and the step 1 uniLoader hardware probe is kept for history. All confirmed hardware facts are in `EVIDENCE.md`.
+
+## Mainline milestone 1: boot to a console on screen
+
+```bash
+sudo apt install git clang lld llvm bison bc cmake build-essential python3 curl
+./setup.sh            # pinned sources + verified xPack GNU toolchain
+./build-mainline.sh   # -> out/a5y17lte-mainline-m1-boot.img (+ .sha256)
+```
+
+| Path | What it is |
+|---|---|
+| `mainline/dts/` | `exynos7880.dtsi`, `exynos7880-a5y17lte.dts`; every value cited |
+| `mainline/config/a5y17lte-m1.config` | Minimal kernel config fragment |
+| `mainline/init/init.c` | nolibc init: info screen, panel refresh test, reboot to recovery |
+| `mainline/a5y17lte.its`, `mainline/boot.cmd` | FIT payload and U-Boot boot script |
+| `tools/emulate_uboot.py` | Runs the boot image on an emulated A53 up to the Linux entry |
+
+### Flash and test (TWRP)
+
+1. In TWRP, back up **Boot** if you haven't already. The step 1 backup works too.
+2. Run `adb push a5y17lte-mainline-m1-boot.img /sdcard/`, then go to Install → Install Image → **Boot**, and Reboot → System.
+3. Expect the Samsung logo for a while: U-Boot has no display output, and Linux boots underneath.
+4. Watch the screen:
+
+| What you see | Meaning |
+|---|---|
+| Linux text with **t =** counting **before 15** | Linux boots, and the panel refreshes by itself (TE trigger). |
+| Text appears only **at t = 15** ("PHASE B") | Linux boots; the software refresh is needed. |
+| Phone reboots **into TWRP** at about t = 180 | The reboot-mode node works. |
+| Logo stays and the phone **reboots by itself** after about 20–40 s | The kernel panicked (`panic=20`); the reboot path works. |
+| Logo stays forever | Linux or U-Boot hung before init. |
+
+To get back: hold Vol Down + Power, then Vol Up + Home + Power for TWRP, and restore the Boot backup.
 
 ## Layout
 

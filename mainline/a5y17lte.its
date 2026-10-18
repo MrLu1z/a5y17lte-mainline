@@ -1,0 +1,57 @@
+/dts-v1/;
+
+/ {
+	description = "Galaxy A5 (2017) mainline Linux, milestone 1";
+	#address-cells = <1>;
+
+	images {
+		kernel {
+			description = "Linux (mainline)";
+			data = /incbin/("Image");
+			type = "kernel";
+			arch = "arm64";
+			os = "linux";
+			compression = "none";
+			load = <0x48000000>;
+			entry = <0x48000000>;
+			hash { algo = "sha256"; };
+		};
+
+		fdt {
+			description = "exynos7880-a5y17lte.dtb";
+			data = /incbin/("exynos7880-a5y17lte.dtb");
+			type = "flat_dt";
+			arch = "arm64";
+			compression = "none";
+			hash { algo = "sha256"; };
+		};
+
+		ramdisk {
+			description = "milestone-1 initramfs";
+			data = /incbin/("initramfs.cpio.gz");
+			type = "ramdisk";
+			arch = "arm64";
+			os = "linux";
+			compression = "none";
+			hash { algo = "sha256"; };
+		};
+
+		bootscript {
+			description = "U-Boot boot script";
+			data = /incbin/("boot.cmd");
+			type = "script";
+			compression = "none";
+		};
+	};
+
+	configurations {
+		default = "a5y17lte";
+
+		a5y17lte {
+			description = "Galaxy A5 (2017)";
+			kernel = "kernel";
+			fdt = "fdt";
+			ramdisk = "ramdisk";
+		};
+	};
+};

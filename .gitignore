@@ -1,5 +1,6 @@
 upstream/
 uniLoader/
+build/
 out/*.png
 out/ramdisk-empty.cpio.gz
 out/project.bundle
