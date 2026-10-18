@@ -3,8 +3,9 @@
  * Samsung Exynos 7880 SoC device tree source - milestone 1 (boot to console)
  *
  * Only blocks that need no clock driver: CPUs (PSCI), GIC, architected
- * timer and the PMU (for reboot). Clock controllers, pinctrl, UART etc.
- * come in later milestones.
+ * timer, the PMU (for reboot) and, from milestone 2, the ALIVE pin
+ * controller (no clock in mainline 7870 either). Clock controllers, other
+ * pin controllers, UART etc. come in later milestones.
  *
  * Sources for every value:
  *  [D] Samsung universal7880 kernel, hybris-17.1: arch/arm64/boot/dts/exynos7880.dtsi
@@ -20,6 +21,11 @@
 	#size-cells = <1>;
 
 	interrupt-parent = <&gic>;
+
+	aliases {
+		/* index into exynos7880_pin_ctrl[] (Linux pinctrl-exynos-arm64.c) */
+		pinctrl0 = &pinctrl_alive;
+	};
 
 	cpus {
 		#address-cells = <1>;
@@ -144,6 +150,19 @@
 			};
 		};
 
+		/* [D] pinctrl_0: pinctrl@139F0000, wake-up EINT on SPI 16 */
+		pinctrl_alive: pinctrl@139f0000 {
+			compatible = "samsung,exynos7880-pinctrl";
+			reg = <0x139f0000 0x1000>;
+
+			wakeup-interrupt-controller {
+				compatible = "samsung,exynos7880-wakeup-eint",
+					     "samsung,exynos7-wakeup-eint";
+				interrupt-parent = <&gic>;
+				interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
+			};
+		};
+
 		/* [D] gic: interrupt-controller@106E1000, 4 regions, PPI 9 */
 		gic: interrupt-controller@106e1000 {
 			compatible = "arm,cortex-a15-gic";
@@ -170,3 +189,5 @@
 		clock-frequency = <26000000>;
 	};
 };
+
+#include "exynos7880-pinctrl.dtsi"

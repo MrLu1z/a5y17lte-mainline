@@ -1,7 +1,7 @@
 /dts-v1/;
 
 / {
-	description = "Galaxy A5 (2017) mainline Linux, milestone 1";
+	description = "Galaxy A5 (2017) mainline Linux, milestone 2";
 	#address-cells = <1>;
 
 	images {
@@ -27,7 +27,7 @@
 		};
 
 		ramdisk {
-			description = "milestone-1 initramfs";
+			description = "test initramfs";
 			data = /incbin/("initramfs.cpio.gz");
 			type = "ramdisk";
 			arch = "arm64";

@@ -272,6 +272,45 @@ A video was also taken.
 
 **Still open:** the exact load addresses S-Boot uses (TWRP readings not taken yet). They didn't matter here, because position-independent U-Boot coped.
 
+## 16. Milestone 2: keys (built 2026-10-19, not yet tested on the phone)
+
+**7880 pin control.** Taken from the Samsung universal7880 `drivers/pinctrl/samsung/pinctrl-exynos.c`, `exynos7880_pin_banks0..7`.
+
+- The bank types are identical to the 7870's: `bank_type_5` for ALIVE, `bank_type_4` for the rest.
+- Differences from the 7870:
+
+| Controller | Difference |
+|---|---|
+| ALIVE (0x139F0000) | Adds `gpa3` (5 pins, 0x0a0, wake-up EINT 0x0c). `etc0`, `etc1` and `gpq0` have no EINT. |
+| TOP | Adds `gpd5` (5 pins, 0x180, EINT 0x30). |
+| Controller 1 | CCORE (gpm0, 0x10630000) replaces the 7870's MIF. |
+
+- **Kernel patches** in `mainline/patches/`, applied to v7.2 on branch `a5y17lte`:
+  1. `dt-bindings: pinctrl: samsung: add exynos7880 compatibles`
+  2. `pinctrl: samsung: add Exynos7880 support` (full 8-controller table)
+
+  Both pass `checkpatch.pl`; the only flag is the intentional missing Signed-off-by. They follow `Documentation/process/coding-assistants.rst`: an `Assisted-by:` tag, and no AI sign-off.
+- **Wake-up interrupts.** Taken from the Samsung `exynos7880.dtsi` pinctrl_0 node:
+  - SPI 0–15 serve as the per-pin interrupts for gpa0 and gpa1
+  - SPI 16 is the muxed wake-up interrupt for gpa2 and gpa3
+
+  This matches the mainline 7870 layout.
+- **Keys.** Taken from the Samsung `exynos7880-a5y17lte_common.dtsi`:
+  - Power gpa0-0 (KEY_POWER 116)
+  - Volume Down gpa2-1 (114)
+  - Volume Up gpa2-0 (115)
+  - Home gpa1-7 (KEY_HOMEPAGE 172)
+  - All pins use function 0xF (EINT), pud 0, drv 0.
+
+  These match mainline `exynos7870-j5y17lte.dts`.
+- **Checks so far:**
+  - The DTB builds with W=1 and no warnings.
+  - The emulated U-Boot path reaches Linux with an 8 KB FDT that contains the pinctrl node.
+- **Phone test:**
+  - The screen should list `input: event0 = gpio-keys`.
+  - Each key should print pressed and released.
+  - Holding Power for 3 s should reboot into TWRP.
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).
