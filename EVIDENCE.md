@@ -272,7 +272,7 @@ A video was also taken.
 
 **Still open:** the exact load addresses S-Boot uses (TWRP readings not taken yet). They didn't matter here, because position-independent U-Boot coped.
 
-## 16. Milestone 2: keys (built 2026-10-19, not yet tested on the phone)
+## 16. Milestone 2: keys (built and tested 2026-10-19)
 
 **7880 pin control.** Taken from the Samsung universal7880 `drivers/pinctrl/samsung/pinctrl-exynos.c`, `exynos7880_pin_banks0..7`.
 
@@ -310,6 +310,36 @@ A video was also taken.
   - The screen should list `input: event0 = gpio-keys`.
   - Each key should print pressed and released.
   - Holding Power for 3 s should reboot into TWRP.
+
+### 16a. Hardware result (2026-10-19 00:48)
+
+Photos: `evidence/hw-mainline-m2-{boot,keys,twrp}-2026-10-19.jpg`.
+
+**Working:**
+
+- `input: gpio-keys as /devices/platform/gpio-keys/input/input0`; init lists `event0 = gpio-keys`.
+- **Power** (gpa0-0, per-pin SPI 0): 9 presses, each pressed and released.
+- **Volume Up** (gpa2-0, muxed SPI 16): 5 presses.
+- **Volume Down** (gpa2-1, muxed SPI 16): 4 presses.
+
+  So both interrupt paths work: the per-pin GIC SPI and the muxed wake-up EINT.
+- **Holding Power for 3 s rebooted into TWRP** (photo).
+- All 8 CPUs online; MemTotal 2602388 kB.
+
+**Not seen:**
+
+- **Home** (gpa1-7, SPI 15). No Home events appear in the photo, and it isn't yet known whether Home was pressed.
+
+**Kernel warning:**
+
+- `samsung-pinctrl 139f0000.pinctrl: Failed to create device link (0x180) with supplier soc@0 for /soc@0/pinctrl@139f0000/wakeup-interrupt-controller`
+- This is fw_devlink. It is non-fatal: the wake-up interrupts work, as Volume Up/Down prove.
+
+**Cosmetic:**
+
+- `^[[26~` echoes before Volume Down lines.
+- Cause: the VT keyboard turns the key into an escape sequence, and the console tty echoes it.
+- Fix: turn off tty echo in init.
 
 ## Open items
 
