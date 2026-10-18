@@ -421,6 +421,38 @@ Photo: `evidence/hw-mainline-m3-emmc-2026-10-19.jpg`. After pressing Power, the 
 - It sweeps the card clock through debugfs (0.4 to 52 MHz) and does an uncached 64 KiB read plus a GPT check at each step.
 - It keeps the fastest passing rate and lists the partitions.
 
+### 17b. Hardware result for M3b (2026-10-19 01:08)
+
+Photos: `evidence/hw-mainline-m3b-{clock,keys}-2026-10-19.jpg`.
+
+**Real eMMC clock** (CMU_CCORE registers read on the phone):
+
+| Register | Value | Meaning |
+|---|---|---|
+| BUS_PLL_CON0 | `0xa0f60400` | M=246, P=4, S=0 → **1599.0 MHz** |
+| MEDIA_PLL_CON0 | `0xa0cd0400` | M=205, P=4, S=0 → 1332.5 MHz |
+| MMC0 mux | `0x00200000` | bit 12 = 0, so BUS_PLL/2; bit 21 is the mux gate enable |
+| MMC0 div | `0x1` | ÷2 |
+
+- So the **MMC0 CIU is 399.75 MHz**, not the 800 MHz assumed in M3.
+- Every card clock in M3 was therefore half the requested one: slower, which is the safe direction.
+- The DT fixed clock is now 399750000.
+
+**Clock sweep:**
+
+- `0.4:FAIL 1.0:FAIL 5.0:FAIL 10.0:FAIL 20.0:FAIL 26.0:FAIL 40.0:FAIL 52.0:FAIL`, giving `no frequency passed`.
+- **Sector reads fail regardless of clock.**
+- Card identification and the EXT_CSD read still work (BJNB4R, 29820 MiB).
+
+**Keys:** **Home works** (code 172). With this, all four keys are confirmed on hardware. Holding Power for 3 s still reboots into TWRP.
+
+**Suspect: the SMU sector-access policy.**
+
+- Mainline `dw_mci_exynos_config_smu` writes `MPSCTRL0 = SECURE_WRITE | NON_SECURE_READ | NON_SECURE_WRITE | VALID` (0x71), which leaves out SECURE_READ.
+- Samsung's `DWMCI_MPSCTRL_BYPASS` (`dw_mmc-exynos.h:212`) sets all four access bits plus VALID (0xF1).
+- If the 7880 FSYS DMA master is secure, 0x71 blocks every sector *read*. EXT_CSD reads are not sector-checked, which fits the observations.
+- **M3c** shows the SMU registers, writes 0xF1, and repeats the sweep.
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).

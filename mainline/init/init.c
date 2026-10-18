@@ -14,7 +14,15 @@
  * Milestone 3 result (EVIDENCE.md section 17a): card identified, but data
  * reads fail at 50 MHz while EXT_CSD read at ~300 kHz worked.
  *
- * Milestone 3b (this build): diagnose the eMMC clock, strictly read-only.
+ * Milestone 3b result (EVIDENCE.md 17b): MMC0 CIU is 399.75 MHz; data reads
+ * fail at every clock from 0.4 to 52 MHz, so speed is not the cause.
+ *
+ * Milestone 3c (this build): SMU test. Mainline writes MPSCTRL0 = 0x71
+ * (no SECURE_READ); Samsung's own bypass is 0xF1 (dw_mmc-exynos.h:212).
+ *  - show EMMCP SMU registers as found, write Samsung's bypass, read back
+ *  - re-run the read-only clock sweep and partition listing
+ *
+ * Milestone 3b (previous): diagnose the eMMC clock, strictly read-only.
  *  - read CMU_CCORE (Samsung S5E7880-cmusfr.h / -cmu.c / -pll.c) and show
  *    the real MMC0 clock S-Boot left: BUS_PLL/MEDIA_PLL /2, then DIV
  *  - sweep the card clock via debugfs (mmc0/clock), and at each step read
@@ -251,6 +259,43 @@ static void show_mmc_clock(void)
 	puts_(" / "); puts_(utoa((div & 0x3ff) + 1)); puts_(")\n");
 }
 
+/* EMMCP (SMU) at MMC0 + 0x1000: Samsung dw_mmc-exynos.h:122-130 */
+#define EMMCP_BASE	0x13541000UL
+#define MPSECURITY	0x010
+#define MPSBEGIN0	0x200
+#define MPSEND0		0x204
+#define MPSCTRL0	0x20c
+#define MPSCTRL_SAMSUNG_BYPASS	0xf1	/* SECURE_R|SECURE_W|NS_R|NS_W|VALID */
+
+static void show_smu(volatile unsigned int *e, const char *when)
+{
+	puts_(" smu    : "); puts_(when);
+	puts_(" SEC "); puthex(rd32(e, MPSECURITY));
+	puts_(" CTRL0 "); puthex(rd32(e, MPSCTRL0));
+	puts_("\n          BEGIN0 "); puthex(rd32(e, MPSBEGIN0));
+	puts_(" END0 "); puthex(rd32(e, MPSEND0)); puts_("\n");
+}
+
+static void smu_samsung_bypass(void)
+{
+	int fd = open("/dev/mem", O_RDWR | O_SYNC);
+	volatile unsigned int *e;
+
+	if (fd < 0)
+		return;
+	e = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, EMMCP_BASE);
+	close(fd);
+	if (e == MAP_FAILED) {
+		puts_(" smu    : map failed\n");
+		return;
+	}
+	show_smu(e, "found ");
+	e[MPSBEGIN0 / 4] = 0;
+	e[MPSEND0 / 4] = 0xffffffff;
+	e[MPSCTRL0 / 4] = MPSCTRL_SAMSUNG_BYPASS;
+	show_smu(e, "bypass");
+}
+
 static void write_str(const char *path, const char *v)
 {
 	int fd = open(path, O_WRONLY);
@@ -362,7 +407,7 @@ int main(void)
 	console_no_echo();
 
 	puts_("\n\n=========================================\n");
-	puts_(" Galaxy A5 (2017) - mainline Linux M3b\n");
+	puts_(" Galaxy A5 (2017) - mainline Linux M3c\n");
 	puts_("=========================================\n");
 	puts_(" kernel : "); puts_(u.release); puts_(" "); puts_(u.machine); puts_("\n");
 	puts_(" cpus   : "); puts_(cpus); puts_("\n");
@@ -391,6 +436,7 @@ int main(void)
 
 	write_str("/proc/sys/kernel/printk", "1");
 	show_mmc_clock();
+	smu_samsung_bypass();
 	emmc_clock_sweep();
 	show_emmc();
 	write_str("/proc/sys/kernel/printk", "7");

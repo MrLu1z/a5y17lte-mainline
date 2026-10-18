@@ -107,12 +107,11 @@
 	};
 
 	/*
-	 * TEMPORARY (milestone 3): there is no Exynos7880 clock driver yet, so
-	 * the eMMC bus/card clocks are described as fixed clocks. S-Boot leaves
-	 * them running (it loads the boot image from this eMMC). 800 MHz is the
-	 * CIU rate Samsung uses ([D] dwmmc0 clock-frequency, ciu_clkin max 200
-	 * MHz x (ciu-div 3 + 1)); if the real rate is lower the card just runs
-	 * slower than requested. Replace with cmu_fsys clocks later.
+	 * TEMPORARY: there is no Exynos7880 clock driver yet, so the eMMC
+	 * bus/card clocks are fixed clocks. S-Boot leaves them running.
+	 * CIU measured on the phone (EVIDENCE.md 17b): CMU_CCORE MMC0 mux =
+	 * BUS_PLL/2, div = 2, BUS_PLL = 26 MHz * 246 / 4 = 1599 MHz, so
+	 * 1599 / 2 / 2 = 399.75 MHz. Replace with CMU clocks later.
 	 */
 	clk_fsys_mmc0_biu: clock-fsys-mmc0-biu {
 		compatible = "fixed-clock";
@@ -124,7 +123,7 @@
 	clk_fsys_mmc0_ciu: clock-fsys-mmc0-ciu {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <800000000>;
+		clock-frequency = <399750000>;
 		clock-output-names = "fsys_mmc0_ciu_fixed";
 	};
 
