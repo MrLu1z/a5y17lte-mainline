@@ -129,6 +129,46 @@ The 7880 has two UARTs, both `samsung,exynos-uart`:
 
 **Emulated:** 333 frames fired, all text drawn, the reset write reached, and no other MMIO touched.
 
+## 12. Hardware result 2: step 1b WORKS on the phone (2026-10-18)
+
+Photo: `evidence/hw-step1b-2026-10-18.jpg`. uniLoader built 02:28:46 (commit 79cdfbe) ran on the real a5y17lte. All text and the R G B W bars are visible.
+
+**Display and loader**
+
+| Reading | Meaning |
+|---|---|
+| Text visible on screen | S-Boot runs a raw uniLoader from the boot partition. The command-mode trigger fix works. |
+| Bars appear in R G B W order | The framebuffer is `0x67000000`, 1080×1920, ARGB8888. **Confirmed.** |
+| DECON TRIG = `0x1000` | The SW_TRIG bit self-clears after a frame. |
+| WIN0 = `0xffff0121` (enabled); WIN1-3 = `0x300` (off) | Only window 0 is in use. |
+| IDMA1 (`0x14822000`) ADDR_Y0 = `0x67000000`; IDMA0 = 0 | S-Boot scans out through **IDMA G1**, not G0. |
+
+**CPU state at hand-off**
+
+| Register | Value | Meaning |
+|---|---|---|
+| CurrentEL | **EL1** | We are handed control at EL1, the level XNU's `start.s` expects. EL2 is not available to us. |
+| MIDR | `0x410fd034` | Cortex-A53 r0p4. |
+| MPIDR | `0x80000000` | Boot CPU is cluster 0, core 0. |
+| **CNTFRQ_EL0** | **0** | Firmware never set it, and EL1 cannot. XNU must take the 26 MHz timer from the device tree (`timebase-frequency`, `pexpert/arm/pe_identify_machine.c:85`), never from CNTFRQ. |
+| DAIF | `0x2c0` | D, I and F masked; SError unmasked. |
+| SCTLR_EL1 | `0x30c5183c` | MMU off (M=0); C and I bits set. Leftover cache state from S-Boot means XNU's entry must clean/invalidate before enabling the MMU. |
+| TCR_EL1 | `0x0000002000000020` | Leftover from S-Boot; ignored because the MMU is off. |
+| VBAR_EL1 | `0x43e00800` | S-Boot's vectors are at 0x43e00000. XNU and its device tree must not be placed over that region before XNU installs its own vectors. |
+| ID_AA64PFR0 | `0x2222` | EL0-3 implemented. GIC field = 0, so no GICv3 system registers. **This confirms a memory-mapped GICv2 only** (section 3). |
+| ID_AA64MMFR0 | `0x1122` | 40-bit physical addresses, 16-bit ASIDs. **TGran16 = 0, so the 16 KB page granule is unsupported**; only 4 KB and 64 KB work. |
+
+**Page size check in XNU 8792**
+
+- 16 KB pages come from `__ARM_16K_PG__`, defined only in `H13.h:73` and `VMAPPLE.h:44`.
+- `BCM2837.h` does not define it, so the A53 target uses `ARM_PGSHIFT 12` (4 KB, `proc_reg.h:1149-1152`). This matches the hardware.
+- The iOS 7.1.2 (A7) kernel also uses 4 KB pages.
+
+**Not yet confirmed**
+
+- Whether the PMU auto-reboot fired.
+- Whether the countdown takes about 30 s at an assumed 26 MHz.
+
 ## Open items
 
 1. A UART cable for the A5 (USB-C debug UART), or framebuffer-only console.

@@ -72,4 +72,4 @@ Only the boot partition changes, and the backup restores it exactly.
 
 - Step 1 builds and passes emulation at load addresses 0x40000000, 0x40080000 and 0x40001000.
 - The screen is byte-identical in all three runs.
-- Not yet run on the phone.
+- **Step 1b runs on the real phone.** The display, framebuffer and EL1 hand-off are confirmed (EVIDENCE.md section 12).
