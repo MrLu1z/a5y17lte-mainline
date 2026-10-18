@@ -341,6 +341,47 @@ Photos: `evidence/hw-mainline-m2-{boot,keys,twrp}-2026-10-19.jpg`.
 - Cause: the VT keyboard turns the key into an escape sequence, and the console tty echoes it.
 - Fix: turn off tty echo in init.
 
+## 17. Milestone 3: eMMC, read-only (built 2026-10-19, not yet tested on the phone)
+
+**Same block as the 7870.** In the Samsung universal7880 kernel, the 7880 dwmmc0 and the 7870 dwmmc0 share:
+
+- the driver (`samsung,exynos-dw-mshc`)
+- the address 0x13540000 and interrupt SPI 245
+- the clock IDs (310, 313, 602)
+- `clock-frequency` 800 MHz and `ciu-div` 3
+- the DDR timing
+
+The only difference is the SDR drive phase: 2 on the 7880, 4 on the 7870.
+
+**Timing conversion:**
+
+- Samsung's driver reads `<div fine-drive drive sample>` (`dw_mmc-exynos.h:145`).
+- Mainline reads `<sample drive>` (`dw_mmc-exynos.c:401–413`).
+- Converting Samsung's 7870 values reproduces mainline `exynos7870-j5y17lte`'s `<0 4>`/`<2 4>` exactly, which confirms the mapping.
+- So the A5 gets SDR `<0 2>` and DDR `<2 4>`.
+
+**Kernel patch 0003.** `dt-bindings: mmc: samsung,exynos-dw-mshc: add exynos7880`, with `exynos7870-dw-mshc-smu` as the fallback. It passes checkpatch, and no driver change is needed.
+
+**Temporary clocks:**
+
+- There is no 7880 CMU driver yet, so the `biu` and `ciu` clocks are fixed clocks (200 and 800 MHz).
+- S-Boot leaves the eMMC clocks running, since it loads the boot image from this eMMC.
+- 800 MHz is Samsung's maximum CIU rate, so if the real rate is lower the card runs *slower* than requested. That is the safe direction.
+- To limit risk further: 52 MHz high-speed SDR only, with no DDR, HS200 or HS400 (those need tuning plus the 1.8 V regulator), and no pinctrl or regulator handling.
+
+**Data safety:**
+
+- The init sets `/dev/mmcblk0` read-only (`BLKROSET`) before reading anything.
+- It only reads LBA 1 (the GPT signature) and the sysfs partition names.
+- No filesystems are mounted.
+
+**Expected on screen:**
+
+- `emmc : mmcblk0 set READ-ONLY`
+- the card name with about 29,800 MiB (32 GB eMMC)
+- `GPT header OK`
+- a list of Samsung partition names (BOOT, RECOVERY, SYSTEM, USERDATA and so on)
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).

@@ -106,6 +106,28 @@
 		};
 	};
 
+	/*
+	 * TEMPORARY (milestone 3): there is no Exynos7880 clock driver yet, so
+	 * the eMMC bus/card clocks are described as fixed clocks. S-Boot leaves
+	 * them running (it loads the boot image from this eMMC). 800 MHz is the
+	 * CIU rate Samsung uses ([D] dwmmc0 clock-frequency, ciu_clkin max 200
+	 * MHz x (ciu-div 3 + 1)); if the real rate is lower the card just runs
+	 * slower than requested. Replace with cmu_fsys clocks later.
+	 */
+	clk_fsys_mmc0_biu: clock-fsys-mmc0-biu {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <200000000>;
+		clock-output-names = "fsys_mmc0_biu_fixed";
+	};
+
+	clk_fsys_mmc0_ciu: clock-fsys-mmc0-ciu {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <800000000>;
+		clock-output-names = "fsys_mmc0_ciu_fixed";
+	};
+
 	/* [D] psci: method smc, cpu_suspend 0xC4000001 (same IDs as [M]) */
 	psci {
 		compatible = "arm,psci";
@@ -161,6 +183,24 @@
 				interrupt-parent = <&gic>;
 				interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
 			};
+		};
+
+		/*
+		 * [D] dwmmc_0: dwmmc0@13540000, SPI 245; same block as Exynos7870
+		 * in the Samsung kernel (same driver, interrupt, clock IDs).
+		 */
+		mmc0: mmc@13540000 {
+			compatible = "samsung,exynos7880-dw-mshc-smu",
+				     "samsung,exynos7870-dw-mshc-smu";
+			reg = <0x13540000 0x2000>;
+			interrupts = <GIC_SPI 245 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			clock-names = "biu", "ciu";
+			clocks = <&clk_fsys_mmc0_biu>, <&clk_fsys_mmc0_ciu>;
+
+			status = "disabled";
 		};
 
 		/* [D] gic: interrupt-controller@106E1000, 4 regions, PPI 9 */
