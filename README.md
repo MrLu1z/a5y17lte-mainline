@@ -16,10 +16,11 @@ The repo name is historical. The earlier XNU/iOS investigation is closed, and th
   - Reboot to TWRP works.
   - See EVIDENCE.md section 15.
 
-- **Milestone 2 (keys): passed on the phone (2026-10-19).** Power and Volume Up/Down work; holding Power reboots into TWRP. Home is still to be confirmed.
-- **Milestone 3 (eMMC, read-only):** built, waiting for the phone test. Image: `out/a5y17lte-mainline-m3-boot.img`.
-  - The screen shows the eMMC name, size, GPT check and partition names.
-  - Keys still work. Hold Power for 3 s to reboot into TWRP.
+- **Milestone 2 (keys): passed on the phone (2026-10-19).** All four keys work; holding Power reboots into TWRP.
+- **Milestone 3 (eMMC, read-only): passed on the phone (2026-10-19).**
+  - 8-bit DDR52 at 82 MiB/s; all 25 partitions read.
+  - Needed kernel patch 0004: the SMU must grant SECURE_READ on the Exynos7880.
+  - Latest image: `out/a5y17lte-mainline-m3d-boot.img`.
 
 ## Mainline milestone 1: boot to a console on screen
 

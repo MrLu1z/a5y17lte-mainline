@@ -341,7 +341,7 @@ Photos: `evidence/hw-mainline-m2-{boot,keys,twrp}-2026-10-19.jpg`.
 - Cause: the VT keyboard turns the key into an escape sequence, and the console tty echoes it.
 - Fix: turn off tty echo in init.
 
-## 17. Milestone 3: eMMC, read-only (built 2026-10-19, not yet tested on the phone)
+## 17. Milestone 3: eMMC (read-only), PASSED 2026-10-19
 
 **Same block as the 7870.** In the Samsung universal7880 kernel, the 7880 dwmmc0 and the 7870 dwmmc0 share:
 
@@ -485,6 +485,34 @@ Photos: `evidence/hw-mainline-m3c-{smu,keys}-2026-10-19.jpg`.
 - It sets SECURE_READ for `samsung,exynos7880-dw-mshc-smu` only.
 - It passes checkpatch.
 - **M3d** checks that the kernel alone (with no userspace SMU write) gives 0xf1. It also reports bus width/timing and a 32 MiB read speed.
+
+### 17d. Hardware result for M3d: the kernel fix alone, at full speed (2026-10-19 01:25)
+
+Photos: `evidence/hw-mainline-m3d-{emmc,keys,ghosting}-2026-10-19.jpg`.
+
+| Observation | Meaning |
+|---|---|
+| `smu : kernel SEC 0xdfe26492 CTRL0 0x000000f1` (init no longer writes the SMU) | **Patch 0004 works on its own.** |
+| GPT OK, 25 partitions (same list as 17c) | Partition table read correctly. |
+| `ios : clock 52000000 Hz, actual clock 49968750 Hz` | The measured 399.75 MHz / 4 / 2 = 49.97 MHz, so the fixed-clock value is exactly right. |
+| `ios : bus width 3 (8 bits)` | The 8-bit bus switch now passes: the M3 failure was the same SMU issue, because the bus test reads also go through the IDMAC. |
+| `ios : timing spec 8 (mmc DDR52)` | The mmc core chose DDR52 by itself. The Exynos dw_mmc capabilities include 1.8V DDR, and the card supports it. |
+| `ios : signal voltage 1 (1.80 V)` | No vqmmc regulator is described; the I/O rail is already at 1.8 V from S-Boot. |
+| `speed : read 32 MiB in 390 ms = 82.0 MiB/s` | Uncached sequential read at about 80% of the DDR52 8-bit theoretical maximum (~104 MB/s). |
+| All four keys work; holding Power reboots into TWRP | Keys and exit unaffected. |
+
+**Cosmetic.** One photo (`…-ghosting-…`) shows two console frames overlapping, so text looks doubled while the screen redraws. Two possible causes:
+
+- the camera caught a moment mid-refresh, or
+- the TE refresh scanned out while fbcon was scrolling.
+
+Watch for it, but it doesn't affect function.
+
+**Status:**
+
+- **Milestone 3 (eMMC read) passes.**
+- The fixed clocks stay until a 7880 CMU driver exists.
+- HS200/HS400 (up to ~200 MB/s) would need tuning and a real clock driver.
 
 ## Open items
 
