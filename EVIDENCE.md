@@ -885,3 +885,27 @@ binder-control (BINDER_CTL_ADD), checks BINDER_VERSION, reads
   `/dev/binderfs/{binder,hwbinder,vndbinder} OK, protocol 8`, a `psi` line,
   `w0 : PASS`.
 - Keys, USB networking, SSH unchanged.
+
+### 20a. Hardware result for W0b: W0 PASSED (2026-10-19 14:35)
+
+Jimmy flashed `a5y17lte-mainline-w0b-boot.img` (14,487,568 B, sha256
+`86ce1e4e…13b9aa`, built on his PC from 52661c4). Photos:
+`evidence/hw-mainline-w0b-{android,net}-2026-10-19.jpg`.
+
+| Reading | Meaning |
+|---|---|
+| Kernel log and console fully visible, refreshing | **simpledrm + fbdev emulation keep the command-mode panel working**: the TE refresh from `a5-diag panel` is unaffected (main W0 risk, sec. 20). |
+| `drm : /dev/dri/card0 OK, driver simpledrm`; `card0-Unknown-1 connected, modes 1080x1920` | KMS device for phoc/Waydroid on the boot framebuffer. |
+| `binder : binderfs OK, device 250:4, protocol 8 (want 8)` | binderfs mounts; BINDER_CTL_ADD and BINDER_VERSION work. |
+| `/dev/binderfs/{binder,hwbinder,vndbinder} OK, protocol 8` | The three default devices from ANDROID_BINDER_DEVICES appear in the mount (minors 1-3; the test device took 4). |
+| `psi : some avg10=0.00 … total=0` | PSI available for Android's lmkd. |
+| `w0 : PASS` | |
+| Boot log: `loop: module loaded`, `tun: Universal TUN/TAP device driver`, `8021q: 802.1Q VLAN Support` | The W0b options are built in. |
+| emmc `all READ-ONLY`; SYSTEM p19 ro=1; USB (UDC, NCM+ACM, MUIC switch, `udc : state configured`), `usb0 172.16.42.1` | M3-M5a behaviour unchanged. |
+| MemTotal 2,595,984 kB (M5a: 2,597,040 kB) | W0b's extra code costs about 1 MB. |
+
+The banner says "W0" (the W0b build reused W0's init text).
+
+**Next:** W1, Waydroid headless on Nura, after M5d. It needs these W0 options in
+the kernel Nura boots, so `android-w0` merges into `main` once the Nura
+session has finished M5c/M5d.
