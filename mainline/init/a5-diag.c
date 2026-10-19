@@ -13,6 +13,8 @@
  *   a5-diag usbregs DWC3 and USB PHY register dump, UDC state
  *   a5-diag android W0: simpledrm KMS device, binderfs + a binder device
  *                   (BINDER_VERSION), PSI - what Waydroid needs
+ *   a5-diag held MS exit 0 if Volume Down is held at any time within MS ms
+ *                   (M5d: stay in this rescue image instead of booting Nura)
  *   a5-diag keys    PID 1 loop: print key presses, hold Power 3 s ->
  *                   reboot into recovery (TWRP), reap orphaned children
  *
@@ -586,6 +588,34 @@ static int cmd_android(void)
 	return !ok;
 }
 
+/* M5d escape hatch: is Volume Down held now or within the next ms? */
+static int cmd_held(int ms)
+{
+	long long end = now_ms() + ms;
+	int fds[8], nfds = 0;
+
+	for (int i = 0; i < 8; i++) {
+		char path[32];
+		int fd;
+
+		snprintf(path, sizeof(path), "/dev/input/event%d", i);
+		fd = open(path, O_RDONLY);
+		if (fd >= 0)
+			fds[nfds++] = fd;
+	}
+	do {
+		for (int i = 0; i < nfds; i++) {
+			unsigned char keys[KEY_MAX / 8 + 1] = { 0 };
+
+			if (ioctl(fds[i], EVIOCGKEY(sizeof(keys)), keys) >= 0 &&
+			    keys[KEY_VOLUMEDOWN / 8] & (1 << (KEY_VOLUMEDOWN % 8)))
+				return 0;
+		}
+		usleep(50000);
+	} while (now_ms() < end);
+	return 1;
+}
+
 int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -605,9 +635,11 @@ int main(int argc, char **argv)
 		return cmd_usbregs();
 	if (!strcmp(argv[1], "android"))
 		return cmd_android();
+	if (!strcmp(argv[1], "held") && argc > 2)
+		return cmd_held(atoi(argv[2]));
 	if (!strcmp(argv[1], "keys"))
 		return cmd_keys();
 usage:
-	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|android|keys\n");
+	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|android|held MS|keys\n");
 	return 2;
 }
