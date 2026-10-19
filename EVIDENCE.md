@@ -1003,6 +1003,12 @@ M4/W0 (dropbear root, telnet, udhcpd, serial shell, hold Power -> TWRP).
 ### 22a. Hardware result for M5d: NURA BOOTS (2026-10-19)
 
 Jimmy flashed `a5y17lte-mainline-m5d-boot.img` (sha256 `7ab5ddd7…`).
+Photos: `evidence/hw-mainline-m5d-init.jpg` (initramfs screen: `M5d`,
+`system : ext4, label "pmOS_root", 655 MiB filesystem`, all M5a/W0/M4 lines,
+`net : usb0 172.16.42.1`, the Volume Down prompt) and
+`evidence/hw-mainline-m5d-nura-openrc.jpg` (OpenRC boot: `ssh-keygen:
+generating new host keys`, `Starting sshd ... ok`, `Welcome to Nura!`,
+`Kernel 7.2.0+ on an aarch64 (/dev/tty1)`, `a5y17lte login:`).
 
 | Observation | Meaning |
 |---|---|
