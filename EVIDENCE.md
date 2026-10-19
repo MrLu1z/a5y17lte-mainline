@@ -671,6 +671,33 @@ So the PC never sees the D+ pull-up.
   - PHY LINKSYSTEM/UTMI/CLKRST/HSPHYCTRL/PLLTUNE
 - The serial shell now uses `setsid -c` on ttyGS0 instead of cttyhack.
 
+### 18d. Hardware result for M4c: THE PC ENUMERATES THE PHONE (2026-10-19 03:19)
+
+Photos: `evidence/hw-mainline-m4c-{muic,pc-dmesg}-2026-10-19.jpg`.
+
+**Phone side:**
+
+- **MUIC as S-Boot left it:** `rev 29 adc 00 dev 00 00 01 chg 00`, `CTRL1 17 (auto switching) SW_CTRL 00 (D+/D- = OPEN)`.
+  - **S-Boot leaves the USB data lines disconnected.** That was the M4/M4b failure.
+- **After a5-diag:** `CTRL1 13 (manual) SW_CTRL 24 (D+/D- = USB)`, then the gadget was re-attached and `udc : state configured`.
+- **The GPIO I2C (gpc1-0 SDA, gpc1-1 SCL) to the S2MU004 at 0x3d works.**
+
+**Register dump:**
+
+| Block | Values |
+|---|---|
+| DWC3 | GCTL 30c12004, GSTS 3e800000, GUSB2PHYCFG 40102540, DCFG 00a00888, DCTL 80f00a00 (RUN_STOP set), DSTS 0003f388 |
+| PHY | LINKSYSTEM 080001c0, UTMI 00000660, CLKRST 800000e9, HSPHYCTRL 00150430, PLLTUNE 0000000e |
+
+**PC side** (Linux Mint, `dmesg`, xhci port 3-5):
+
+- `New USB device found, idVendor=1d6b, idProduct=0104, bcdDevice= 7.02`
+- `Product: Galaxy A5 2017 (mainline Linux)`, `Manufacturer: a5y17lte mainline`, `SerialNumber: a5y17lte-m4`
+- `cdc_acm 3-5:1.2: ttyACM0: USB ACM device`
+- `cdc_ncm 3-5:1.0 usb0: register 'cdc_ncm' ... 02:a5:17:00:00:02`, renamed `enx02a517000002`
+
+**USB gadget mode works at high speed on the Exynos7880 under mainline Linux.**
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).
