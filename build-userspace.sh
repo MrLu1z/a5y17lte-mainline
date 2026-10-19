@@ -68,14 +68,13 @@ echo "== dropbear"
 /* Galaxy A5 test image: dropbear over USB networking only. */
 #define DROPBEAR_SVR_PASSWORD_AUTH 1
 #define DEFAULT_PATH "/bin:/sbin"
-#define DROPBEAR_SVR_MULTIUSER 0
 EOF
   [ -f Makefile ] || CC="$CC" AR=llvm-ar RANLIB=llvm-ranlib ./configure \
       --host=aarch64-linux-musl --disable-zlib --enable-static \
       --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp \
       --disable-wtmpx --disable-pututline --disable-pututxline \
       --disable-syslog >/dev/null &&
-  make -j"$JOBS" PROGRAMS="dropbear dropbearkey" MULTI=1 STATIC=1 >/dev/null )
+  make -j"$JOBS" PROGRAMS="dropbear dropbearkey scp" MULTI=1 STATIC=1 >/dev/null )
 llvm-strip -o "$U/out/dropbearmulti" "$U/dropbear/dropbearmulti"
 
 ls -la "$U/out"

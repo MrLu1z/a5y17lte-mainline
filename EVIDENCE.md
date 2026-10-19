@@ -671,6 +671,33 @@ So the PC never sees the D+ pull-up.
   - PHY LINKSYSTEM/UTMI/CLKRST/HSPHYCTRL/PLLTUNE
 - The serial shell now uses `setsid -c` on ttyGS0 instead of cttyhack.
 
+### 18d. Hardware result for M4c: THE PC ENUMERATES THE PHONE (2026-10-19 03:19)
+
+Photos: `evidence/hw-mainline-m4c-{muic,pc-dmesg}-2026-10-19.jpg`.
+
+**Phone side:**
+
+- **MUIC as S-Boot left it:** `rev 29 adc 00 dev 00 00 01 chg 00`, `CTRL1 17 (auto switching) SW_CTRL 00 (D+/D- = OPEN)`.
+  - **S-Boot leaves the USB data lines disconnected.** That was the M4/M4b failure.
+- **After a5-diag:** `CTRL1 13 (manual) SW_CTRL 24 (D+/D- = USB)`, then the gadget was re-attached and `udc : state configured`.
+- **The GPIO I2C (gpc1-0 SDA, gpc1-1 SCL) to the S2MU004 at 0x3d works.**
+
+**Register dump:**
+
+| Block | Values |
+|---|---|
+| DWC3 | GCTL 30c12004, GSTS 3e800000, GUSB2PHYCFG 40102540, DCFG 00a00888, DCTL 80f00a00 (RUN_STOP set), DSTS 0003f388 |
+| PHY | LINKSYSTEM 080001c0, UTMI 00000660, CLKRST 800000e9, HSPHYCTRL 00150430, PLLTUNE 0000000e |
+
+**PC side** (Linux Mint, `dmesg`, xhci port 3-5):
+
+- `New USB device found, idVendor=1d6b, idProduct=0104, bcdDevice= 7.02`
+- `Product: Galaxy A5 2017 (mainline Linux)`, `Manufacturer: a5y17lte mainline`, `SerialNumber: a5y17lte-m4`
+- `cdc_acm 3-5:1.2: ttyACM0: USB ACM device`
+- `cdc_ncm 3-5:1.0 usb0: register 'cdc_ncm' ... 02:a5:17:00:00:02`, renamed `enx02a517000002`
+
+**USB gadget mode works at high speed on the Exynos7880 under mainline Linux.**
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).
@@ -688,3 +715,55 @@ So the PC never sees the D+ pull-up.
    - DSI/DECON (Linux 6.18+ has the 7870 DSIM)
    - postmarketOS device package
 5. ~~Framebuffer address~~ confirmed in section 12. ~~UART cable~~ not needed; the screen is the console.
+
+## 18e. M4c on hardware: USB network up, telnet login; dropbear flag bug (M4d)
+
+User test of M4c (2026-10-19), PC side:
+- `ip addr show enx02a517000002` → `inet 172.16.42.2/24` (DHCP lease from udhcpd)
+- `ping 172.16.42.1` → 3/3 received, ~2 ms
+- `telnet 172.16.42.1` → busybox root shell `~ #` (first interactive login)
+- On the phone: `uname -a` → `Linux a5y17lte 7.2.0+ #2 SMP PREEMPT … aarch64`,
+  8 CPUs in /proc/cpuinfo, `free -m` total 2539 MiB.
+- `ssh root@172.16.42.1` → Connection refused. `/tmp/dropbear.log`:
+  `Invalid option -E` + usage text. In dropbear 2026.94, `-E` exists only
+  when syslog support is compiled in; we build `--disable-syslog`, so it
+  already logs to stderr and rejects the flag. The default pidfile
+  `/var/run/dropbear.pid` also had no directory.
+
+M4d fix: drop `-E`, pass `-P /var/run/dropbear.pid`, add /var, /var/run,
+/var/log to the cpio and to init's mkdir. Image
+`out/a5y17lte-mainline-m4d-boot.img`, sha256
+`5cd13ecb78e97869ac72feaec6e559965c8ec5d4440f113555a3872bebc8f291`.
+
+Manual start in telnet (`mkdir -p /var/run && dropbear -R -B -p 22`) then
+showed the second bug: on connect, `Early exit: Non-multiuser Dropbear
+requires a non-multiuser kernel` (PC: `kex_exchange_identification: Connection
+reset by peer`). `DROPBEAR_SVR_MULTIUSER 0` needs CONFIG_MULTIUSER=n; our
+kernel has it =y, so M4d builds the default multi-user dropbear (root from
+/etc/passwd, blank password via -B).
+
+## 18f. M4d on hardware: SSH works (M4 passed)
+
+Photo: `evidence/hw-mainline-m4d-ssh.jpg`. PC side:
+- `enx02a517000002` 172.16.42.2/24 (DHCP), ping 3/3, 1.9–3.6 ms.
+- `ssh root@172.16.42.1` → ED25519 key `SHA256:TDbU+Wc8HhspWRKQvoCM8nO7D+N58FtthHgajBi5xnE`,
+  login banner "Galaxy A5 (2017) - mainline Linux 7.2.0+. eMMC is read-only
+  in this image.", prompt `a5y17lte:~#`.
+- `/tmp/dropbear.log`: "Waiting for kernel randomness to be initialised…"
+  (~9 s at boot), host key generated on first connect, "Auth succeeded with
+  blank password for 'root'".
+- `scp` fails: `sh: /usr/libexec/sftp-server: not found`. OpenSSH 9+ scp
+  uses SFTP by default, and dropbear has no sftp-server. The legacy protocol
+  (`scp -O`) runs `scp -t` on the phone, which the image also lacked.
+  M4e adds dropbear's own `scp` to dropbearmulti (+ /bin/scp symlink), so
+  `scp -O` works; a real sftp-server comes with postmarketOS (OpenSSH).
+
+## 18g. M4e on hardware: scp works
+
+Photo: `evidence/hw-mainline-m4e-scp.jpg`. New host key
+`SHA256:p3WHFClYT++zz/SdX4A+J5EEEgQNCT08xVfTPv+l/g4` (generated per boot, eMMC
+read-only). `scp -O test.txt root@172.16.42.1:/tmp/` → 100%, 6 bytes;
+`ssh root@172.16.42.1 cat /tmp/test.txt` → `hello`. PC dmesg on the
+TWRP→mainline switch: 18d1:4ee2 (TWRP) disconnects, then 1d6b:0104
+"Galaxy A5 2017 (mainline Linux)", Mfr "a5y17lte mainline", serial
+"a5y17lte-m4", cdc_ncm usb0 → enx02a517000002, cdc_acm ttyACM0.
