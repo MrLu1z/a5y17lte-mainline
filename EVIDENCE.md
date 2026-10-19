@@ -617,6 +617,29 @@ Photo: `evidence/hw-mainline-m4-usbclk-2026-10-19.jpg`.
 - `head` is no longer needed.
 - The FSYS_BUS rate is set to the measured value.
 
+### 18b. Hardware result for M4b, phone side (2026-10-19 03:08)
+
+Photo: `evidence/hw-mainline-m4b-usb-2026-10-19.jpg`.
+
+**Working:**
+
+- `UDC = 13600000.usb`: the DWC3 gadget controller runs on the 7880 using the mainline 7870 drivers, with no driver changes.
+- `gadget bound (NCM + ACM)`.
+- `usb0 172.16.42.1`, with udhcpd, dropbear and telnetd started.
+- `serial : shell on the PC's /dev/ttyACM0`.
+- Kernel log: `exynos5_usb3drd_phy 135c0000.phy` probed; its only messages are the expected dummy `vbus`/`vbus-boost` regulators.
+- Clocks are identical to 18a.
+
+**Side effect:**
+
+- An `a5y17lte:~#` prompt appeared on the phone's own screen.
+- Likely cause:
+  - busybox `cttyhack` falls back to `/sys/class/tty/console/active` (tty0) when it can't identify ttyGS0.
+  - The PC (ModemManager) opening `/dev/ttyACM0` then starts that shell.
+- To fix next build: start the serial shell with `setsid -c` on ttyGS0 directly, without cttyhack.
+
+**Pending:** the PC side (lsusb, DHCP, SSH).
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).
