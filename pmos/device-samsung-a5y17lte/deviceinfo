@@ -1,0 +1,23 @@
+# Reference: <https://postmarketos.org/deviceinfo>
+# Please use double quotes only. You can source this file in shell scripts.
+
+deviceinfo_format_version="0"
+deviceinfo_name="Samsung Galaxy A5 (2017)"
+deviceinfo_manufacturer="Samsung"
+deviceinfo_codename="samsung-a5y17lte"
+deviceinfo_year="2017"
+deviceinfo_dtb="exynos/exynos7880-a5y17lte"
+deviceinfo_arch="aarch64"
+
+# Device related
+deviceinfo_chassis="handset"
+deviceinfo_external_storage="true"
+deviceinfo_screen_width="1080"
+deviceinfo_screen_height="1920"
+deviceinfo_getty="ttyGS0;115200"
+
+# Bootloader related
+# S-Boot loads mainline U-Boot + a FIT from the BOOT partition; that boot
+# image is built outside pmbootstrap (build-mainline.sh), and the root
+# filesystem goes to the SYSTEM partition (build-pmos.sh).
+deviceinfo_flash_method="none"

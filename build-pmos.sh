@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Galaxy A5 (2017) M5: postmarketOS root filesystem for the SYSTEM partition.
+# pmbootstrap and pmaports at the commits pinned in setup.sh, plus our two
+# packages from pmos/ (device-samsung-a5y17lte, linux-postmarketos-exynos7880).
+# The kernel package gets the same patches, device tree and .config as the
+# FIT that build-mainline.sh puts on the BOOT partition.
+# pmbootstrap needs sudo (chroots); everything stays in build/pmbootstrap.
+# Output: build/pmos/samsung-a5y17lte-root.img (ext4) + .sha256
+# Env: A5_PMOS_PASSWORD (default 147147, change it with passwd on the phone;
+#      ~/.ssh/*.pub are installed for SSH key login either way)
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LINUX="$ROOT/upstream/linux"
+PMA="$ROOT/upstream/pmaports"
+W="$ROOT/build/pmbootstrap"
+CFG="$ROOT/build/pmbootstrap_v3.cfg"
+O="$ROOT/build/pmos"
+K=linux-postmarketos-exynos7880
+DEV=device-samsung-a5y17lte
+# linux-7.2.tar.xz; its sha256 f9fef3d1...02b3 matches kernel.org v7.x/sha256sums.asc
+KERNEL_SHA512=47e63679363261a864d271277340a6f2d45f544e1a056be4159df081f4f6537d0efa865c4af26611ab33a3079ee65db88ec2f6bc0e5fff43e0c043cde0cd91e1
+pmb() { python3 "$ROOT/upstream/pmbootstrap/pmbootstrap.py" -c "$CFG" -y "$@"; }
+
+[ -d "$PMA/.git" ] && [ -d "$ROOT/upstream/pmbootstrap/.git" ] || { echo "run ./setup.sh first"; exit 1; }
+[ "$(git -C "$LINUX" rev-parse --abbrev-ref HEAD)" = a5y17lte ] || { echo "run ./build-mainline.sh first"; exit 1; }
+mkdir -p "$W" "$O"
+# a fresh work dir needs the version stamp pmbootstrap init would write
+[ -e "$W/version" ] || [ -e "$W/chroot_native" ] || \
+	echo "$(sed -n 's/^work_version = //p' "$ROOT/upstream/pmbootstrap/pmb/config/__init__.py")" > "$W/version"
+
+echo "== kernel config (same as build-mainline.sh)"
+KCONFIG_ALLCONFIG="$ROOT/mainline/config/a5y17lte.config" \
+	make -s -C "$LINUX" ARCH=arm64 LLVM=1 allnoconfig >/dev/null
+
+echo "== our packages -> pmaports device/testing"
+# ours replaces the archived downstream port of the same name
+rm -rf "$PMA/device/archived/$DEV"
+for p in "$DEV" "$K"; do
+	rm -rf "$PMA/device/testing/$p"
+	cp -r "$ROOT/pmos/$p" "$PMA/device/testing/$p"
+done
+cp "$ROOT"/mainline/patches/*.patch "$ROOT"/mainline/dts/exynos7880*.dts* "$PMA/device/testing/$K/"
+cp "$LINUX/.config" "$PMA/device/testing/$K/config-postmarketos-exynos7880.aarch64"
+# every patch must be listed in the APKBUILD
+for p in "$ROOT"/mainline/patches/*.patch; do
+	grep -q "^	$(basename "$p")$" "$ROOT/pmos/$K/APKBUILD" || { echo "not in $K/APKBUILD: $p"; exit 1; }
+done
+
+cat > "$CFG" <<EOF
+[pmbootstrap]
+aports = $PMA
+work = $W
+device = samsung-a5y17lte
+ui = console
+service_manager = openrc
+user = user
+hostname = a5y17lte
+ssh_keys = True
+timezone = $(cat /etc/timezone 2>/dev/null || echo UTC)
+locale = en_US.UTF-8
+jobs = $(nproc)
+EOF
+
+echo "== checksums (kernel tarball pinned)"
+mkdir -p "$W/cache_distfiles"
+[ -f "$W/cache_distfiles/linux-7.2.tar.xz" ] || [ ! -f "$ROOT/upstream/tools/dl/linux-7.2.tar.xz" ] || \
+	cp "$ROOT/upstream/tools/dl/linux-7.2.tar.xz" "$W/cache_distfiles/"
+pmb checksum "$DEV" "$K"
+grep -q "^$KERNEL_SHA512  linux-7.2.tar.xz$" "$PMA/device/testing/$K/APKBUILD" || \
+	{ echo "linux-7.2.tar.xz checksum does not match the pinned one"; exit 1; }
+
+echo "== build + install (console UI, SSH)"
+pmb build --force "$K" "$DEV"
+pmb install --split --password "${A5_PMOS_PASSWORD:-147147}"
+
+R="$W/chroot_native/home/pmos/rootfs/samsung-a5y17lte-root.img"
+sudo cp "$R" "$O/samsung-a5y17lte-root.img"
+sudo chown "$(id -u):$(id -g)" "$O/samsung-a5y17lte-root.img"
+
+echo "== /etc/fstab: drop /boot (no pmOS_boot partition: the kernel is in the BOOT FIT)"
+# pmbootstrap also leaves the file owned by the build user; make it root's
+F="$(mktemp)"
+debugfs -R "cat /etc/fstab" "$O/samsung-a5y17lte-root.img" 2>/dev/null | grep -v ' /boot ' > "$F"
+debugfs -w -f - "$O/samsung-a5y17lte-root.img" >/dev/null 2>&1 <<EOF
+rm /etc/fstab
+write $F /etc/fstab
+sif /etc/fstab uid 0
+sif /etc/fstab gid 0
+sif /etc/fstab mode 0100644
+EOF
+rm -f "$F"
+debugfs -R "cat /etc/fstab" "$O/samsung-a5y17lte-root.img" 2>/dev/null
+e2fsck -fn "$O/samsung-a5y17lte-root.img" | tail -1
+( cd "$O" && sha256sum samsung-a5y17lte-root.img | tee samsung-a5y17lte-root.img.sha256 )
+ls -l "$O"
