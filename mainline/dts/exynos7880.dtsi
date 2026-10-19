@@ -159,6 +159,18 @@
 		clock-output-names = "gout_mif_cmu_fsys_usb20drd_refclk";
 	};
 
+	/*
+	 * TEMPORARY: GPU clock via fixed-clock (962 MHz max).
+	 * The vendor DTS does not expose a usable clock name for Panfrost;
+	 * a real CMU_G3D driver does not exist upstream yet.
+	 */
+	clk_gpu: clock-gpu {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <962000000>;
+		clock-output-names = "gpu_fixed";
+	};
+
 	/* [D] psci: method smc, cpu_suspend 0xC4000001 (same IDs as [M]) */
 	psci {
 		compatible = "arm,psci";
@@ -173,6 +185,26 @@
 		ranges = <0x0 0x0 0x0 0x20000000>;
 		#address-cells = <1>;
 		#size-cells = <1>;
+
+		/*
+		 * [D] vendor DTS: Mali-T830 MP3 (Midgard v5), base 0x11400000,
+		 * IRQs 282/283/281, power domain pd_g3d.
+		 * Clock via temporary fixed-clock (962 MHz) until a CMU_G3D
+		 * driver exists upstream.
+		 * NOT TESTED on hardware.
+		 */
+		gpu: gpu@11400000 {
+			compatible = "arm,mali-t830", "arm,mali-midgard";
+			reg = <0x11400000 0x5000>;
+			interrupts = <GIC_SPI 282 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 283 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 281 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "job", "mmu", "gpu";
+			clocks = <&clk_gpu>;
+			clock-names = "clk_mali";
+			/* power-domains = <&pd_g3d>; -- no GenPD driver yet */
+			status = "disabled";
+		};
 
 		/*
 		 * [D] system-controller@106B0000, 0x10000 long. Plain syscon for now
