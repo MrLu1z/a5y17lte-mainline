@@ -1060,3 +1060,35 @@ drivers as present. The release strings must match first: the FIT kernel says
 - **New root.img:** 688,914,432 B, sha256 `ef09f3b78962f52b999bc38dee79febb213347eb1a53b23771be12b488a07d72`, e2fsck clean.
 - **Still needed:** the boot image must also be rebuilt (the M5d FIT kernel
   is still `7.2.0+`); that comes with M5e.
+
+## 23. Milestone 5e: Nura read-write on SYSTEM (built 2026-10-19, not yet tested on the phone)
+
+**Boot image** `out/a5y17lte-mainline-m5e-boot.img` (14,624,784 B, sha256
+`bc0ab7679a415460c125ed853fcd73e38d4d2c397379ae39c8b4b64797dddd66`, from 69d8a95).
+- Kernel `7.2.0-a5y17lte`; all fragment options applied.
+- 3 s prompt: no key → `a5-diag lock-except SYSTEM`, then SYSTEM mounted rw
+  (`errors=remount-ro`) and `switch_root`. The lock sets BLKROSET on the raw
+  disk and the other 24 partitions, then sets force_ro to 0, then checks each
+  partition's `ro` attribute and BLKROGET on the disk; `/sys/block/mmcblk0/ro`
+  can't be used, because `disk_ro_show` shows only the disk flag. Volume Up
+  → M5d RAM mode; Volume Down → rescue. Any failure → force_ro 1 → rescue.
+- Checks: busybox (aarch64, qemu-user) `sh -n` on the init; the real
+  key-dispatch block with a stub `a5-diag` (exit 10 → rescue, 11 →
+  `boot_nura ram`, 1 → `boot_nura rw`); emulated U-Boot with the FIT at
+  0x41000000 and 0x5A000000 reaches the Linux entry, all hashes OK. Kernel
+  ends 0x48ce0000. `lock-except` itself only runs on the phone (no
+  `mmcblk0` on the PC).
+
+**Rootfs** `build/pmos/samsung-a5y17lte-root.img` (688,914,432 B, sha256
+`bac1e0c63d11bcfdddf29cf2048e08333c933e72893dfea59b0a7e7e1f30bccc`).
+- Packages: device-samsung-a5y17lte 3-r2 (+ -openrc),
+  linux-postmarketos-exynos7880 7.2-r1, doas, sudo-rs.
+- Checked on the image: e2fsck clean; `/usr/lib/modules/7.2.0-a5y17lte`;
+  `modprobe -n` exits 0 for zram and ext4; the boot runlevel has `swclock`
+  and no `hwclock`; the usb0 settings for NetworkManager and unudhcpd;
+  `authorized_keys` = Jimmy's key; sshd enabled (`/usr/sbin/sshd.pam`).
+- pmbootstrap installs into a fresh rootfs each build (`--zap`).
+  `postmarketos-base-openrc`'s post-install adds hwclock back after ours;
+  build-pmos.sh removes the link.
+- **Host side effect:** `pmbootstrap shutdown` unregisters the host's
+  qemu-aarch64 binfmt; `sudo systemctl restart systemd-binfmt` restores it.
