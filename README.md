@@ -1,5 +1,9 @@
 # a5y17lte: mainline Linux on the Galaxy A5 (2017)
 
+> **Note:** this repo was unarchived to improve GPU support and apply
+> some fixes. The `gpu-test` branch has the WIP Mali-T830 node (untested).
+> See the latest pre-release for the build.
+
 Bringing **mainline Linux (and later postmarketOS)** to the Samsung Galaxy A5 2017 (a5y17lte, Exynos 7880). The boot chain is:
 
 Samsung S-Boot → mainline **U-Boot** (`a5y17lte_defconfig`) → **Linux v7.2** with a new `exynos7880-a5y17lte` device tree.
@@ -129,3 +133,25 @@ Only the boot partition changes, and the backup restores it exactly.
 - Step 1 builds and passes emulation at load addresses 0x40000000, 0x40080000 and 0x40001000.
 - The screen is byte-identical in all three runs.
 - **Step 1b runs on the real phone.** The display, framebuffer and EL1 hand-off are confirmed (EVIDENCE.md section 12).
+
+## GPU (WIP, untested)
+
+The `gpu-test` branch adds a Mali-T830 MP3 node for the Exynos 7880. It is
+**not tested on hardware** — the maintainer's device is currently unavailable.
+
+What the patches do:
+
+- **`dts: exynos7880: add Mali-T830 GPU node (untested)`** — adds
+  `gpu@11400000` to `exynos7880.dtsi`, with `compatible = "arm,mali-t830",
+  "arm,mali-midgard"`, `reg = <0x11400000 0x5000>`, IRQs `282/283/281`
+  (`job`/`mmu`/`gpu`) and a temporary `fixed-clock` at 962 MHz
+  (`clock-names = "clk_mali"`). Values come from the vendor DTS; the clock is
+  provisional because there is no CMU_G3D driver upstream yet.
+  `power-domains` is left commented out (no GenPD driver).
+- **`dts: exynos7880-a5y17lte: enable Mali-T830 GPU`** — sets
+  `status = "okay"` on the GPU node for the a5y17lte board.
+- **`config: enable DRM and Panfrost for Mali-T830`** — adds `CONFIG_DRM=y`,
+  `CONFIG_DRM_PANFROST=y`, `CONFIG_DRM_GEM_SHMEM_HELPER=y`.
+- **`config: add simple_ondemand governor for Panfrost`** — adds
+  `CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND=y`. Without it, Panfrost probe fails
+  with `Couldn't initialize GPU devfreq` and error -22.
