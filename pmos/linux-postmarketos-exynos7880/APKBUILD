@@ -1,0 +1,73 @@
+# Mainline Linux + the a5y17lte patches (mainline/patches), device tree
+# (mainline/dts) and config (build-mainline.sh's .config from
+# mainline/config/a5y17lte.config). build-pmos.sh copies those files here,
+# so the package always builds what the FIT boot image boots.
+# No modules: every driver is built in.
+maintainer="Jimmy <fakeandroit@gmail.com>"
+pkgname=linux-postmarketos-exynos7880
+pkgver=7.2
+pkgrel=0
+pkgdesc="Mainline kernel for Samsung Exynos 7880 devices (Galaxy A5 2017)"
+arch="aarch64"
+_carch="arm64"
+_flavor="postmarketos-exynos7880"
+url="https://github.com/android-a5y7lte/xnu-a5y17lte"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps pmb:cross-native"
+makedepends="
+	bc
+	bison
+	clang
+	findutils
+	flex
+	linux-headers
+	lld
+	llvm
+	openssl-dev
+	perl
+	python3
+"
+
+_config="config-$_flavor.aarch64"
+source="
+	https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$pkgver.tar.xz
+	$_config
+	0001-dt-bindings-pinctrl-samsung-add-exynos7880-compatibl.patch
+	0002-pinctrl-samsung-add-Exynos7880-support.patch
+	0003-dt-bindings-mmc-samsung-exynos-dw-mshc-add-exynos788.patch
+	0004-mmc-dw_mmc-exynos-allow-secure-reads-through-the-SMU.patch
+	0005-dt-bindings-clock-samsung-exynos7870-cmu-add-exynos7.patch
+	0006-dt-bindings-phy-samsung-usb3-drd-phy-add-exynos7880.patch
+	0007-dt-bindings-usb-samsung-exynos-dwc3-add-exynos7880.patch
+	exynos7880.dtsi
+	exynos7880-pinctrl.dtsi
+	exynos7880-a5y17lte.dts
+"
+builddir="$srcdir/linux-$pkgver"
+
+prepare() {
+	default_prepare	# applies the *.patch files in order
+	cp "$srcdir"/exynos7880*.dts* arch/arm64/boot/dts/exynos/
+	echo 'dtb-$(CONFIG_ARCH_EXYNOS) += exynos7880-a5y17lte.dtb' \
+		>> arch/arm64/boot/dts/exynos/Makefile
+	cp "$srcdir/$_config" .config
+	make ARCH="$_carch" LLVM=1 olddefconfig
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" LLVM=1 HOSTLDFLAGS="-fuse-ld=lld" \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1))-postmarketOS" \
+		Image exynos/exynos7880-a5y17lte.dtb
+}
+
+package() {
+	install -Dm644 arch/"$_carch"/boot/Image "$pkgdir"/boot/vmlinuz
+	install -Dm644 arch/"$_carch"/boot/dts/exynos/exynos7880-a5y17lte.dtb \
+		"$pkgdir"/boot/dtbs/exynos/exynos7880-a5y17lte.dtb
+	install -Dm644 include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/"$_flavor"/kernel.release
+}
+
+sha512sums="
+"

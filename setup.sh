@@ -65,6 +65,22 @@ if [ ! -d "$UP/k7880/.git" ]; then
 		drivers/video/fbdev/exynos drivers/soc/samsung drivers/staging/samsung include/linux
 fi
 
+echo "== postmarketOS: pmaports + pmbootstrap (build-pmos.sh), one commit each =="
+fetch_at() {  # url dir commit branch
+	[ -d "$2/.git" ] || { git init -q "$2" && git -C "$2" remote add origin "$1"; }
+	if [ "$(git -C "$2" rev-parse -q --verify HEAD)" != "$3" ]; then
+		git -C "$2" fetch -q --depth 1 origin "$3"
+		git -C "$2" checkout -q "$3"
+	fi
+	# pmbootstrap reads channels.cfg from origin/<branch>: the pinned commit
+	git -C "$2" update-ref "refs/remotes/origin/$4" "$3"
+	echo "  $2 @ $(git -C "$2" log -1 --format=%h)"
+}
+fetch_at https://gitlab.postmarketos.org/postmarketOS/pmaports.git "$UP/pmaports" \
+	f3f926903c1be144b0f92e1a8f3b88383911ad80 main
+fetch_at https://gitlab.postmarketos.org/postmarketOS/pmbootstrap.git "$UP/pmbootstrap" \
+	7d23010a125ca7386fec4e390d14128b6c24d266 main
+
 echo "== Unicorn emulator (tools/emulate_step1.py, tools/emulate_uboot.py) =="
 if [ ! -f "$UP/emu/unicorn/build/libunicorn.so" ]; then
 	mkdir -p "$UP/emu"
