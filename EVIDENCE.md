@@ -830,8 +830,10 @@ First milestone of the open-Android path (ANDROID-ROADMAP.md, branch
 android-roadmap). Branch `android-w0`, kept off `main` until it passes.
 
 **Kernel config** (`mainline/config/a5y17lte.config`, W0 blocks):
-- Binder through binderfs only: ANDROID_BINDER_IPC, ANDROID_BINDERFS,
-  ANDROID_BINDER_DEVICES="" (Waydroid mounts binderfs and creates its own).
+- Binder: ANDROID_BINDER_IPC, ANDROID_BINDERFS, ANDROID_BINDER_DEVICES =
+  "binder,hwbinder,vndbinder". With binderfs on, v7.2 `binder_init()`
+  (drivers/android/binder.c:7134) creates no /dev/binder misc nodes; the three
+  devices appear inside every binderfs mount instead.
 - LXC: VETH (needs NET_CORE, which allnoconfig leaves off), CPUSETS, FUSE_FS.
 - waydroid-net.sh (waydroid/waydroid main): bridge `waydroid0`, NAT to the
   host. It defaults to iptables, legacy binary first, with a mangle CHECKSUM
@@ -845,9 +847,16 @@ android-roadmap). Branch `android-w0`, kept off `main` until it passes.
   /dev/dri/card0 for phoc and Waydroid; fbcon runs on DRM's fbdev client.
   simpledrm only writes the buffer; the panel refresh still comes from
   `a5-diag panel` (DECON HW_SW_TRIG_CONTROL = 0x10, sec. 15), unchanged.
-- Not checked: pmaports' own `waydroid` kconfig category. gitlab.postmarketos.org
-  was unreachable from the build machine; run `pmbootstrap kconfig check`
-  on the PC before W1.
+- **pmaports check (W0b).** Jimmy's copy of pmaports f3f92690
+  kconfigcheck.toml, category waydroid, showed what W0 lacked: static
+  devices binder/hwbinder/vndbinder, BLK_DEV_LOOP, SQUASHFS (+XATTR, XZ;
+  MISC_FILESYSTEMS), TUN, VLAN_8021Q, BRIDGE_VLAN_FILTERING,
+  CROSS_MEMORY_ATTACH, NETFILTER_XT_MATCH_COMMENT. All added, built in.
+  **One deliberate difference:** pmaports asks ANDROID_BINDERFS = n; we keep
+  y, because AOSP R and later requires binderfs (phase A), and Waydroid uses
+  binderfs when /dev/binder is absent. Everything else in the category is
+  satisfied (m accepted as y). BOOT partition = 33,554,432 B (TWRP,
+  `blockdev --getsize64`).
 
 **Checks so far** (Linux v7.2 8d3ae5928 + patches 0001-0007, clang 18):
 - `allnoconfig` + fragment: all 181 options applied, none overridden.
@@ -857,8 +866,9 @@ android-roadmap). Branch `android-w0`, kept off `main` until it passes.
   is build-mainline.sh on the PC).
 - DTB unchanged, W=1 clean.
 - `a5-diag android` compiles with -Wall -Werror (musl 1.2.5, v7.2 uapi).
-- The boot image grows by about 1.5 MB (M5a boot.img 13,414,416 B).
-  The BOOT partition size has not been recorded yet.
+- W0 (first build) boot image on Jimmy's PC: 14,419,984 B, sha256
+  5be8bfa3…; kernel 12,879,880 B, the same size as here. Superseded by W0b
+  (not flashed).
 
 **`a5-diag android`** (called from /init after `a5-diag usb`): prints the
 driver behind /dev/dri/card0 (DRM_IOCTL_VERSION) and the connector modes,
@@ -871,6 +881,7 @@ binder-control (BINDER_CTL_ADD), checks BINDER_VERSION, reads
   simpledrm`); no change in the TE refresh.
 - `drm : /dev/dri/card0 OK, driver simpledrm` and `card0-Unknown-1 connected,
   modes 1080x1920` (connector name may differ).
-- `binder : binderfs OK, device N:M, protocol 8 (want 8)`, a `psi` line,
+- `binder : binderfs OK, device N:M, protocol 8 (want 8)`, then
+  `/dev/binderfs/{binder,hwbinder,vndbinder} OK, protocol 8`, a `psi` line,
   `w0 : PASS`.
 - Keys, USB networking, SSH unchanged.

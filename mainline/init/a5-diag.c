@@ -554,6 +554,23 @@ static int cmd_android(void)
 	if (fd >= 0)
 		close(fd);
 
+	/* the static devices pmaports' waydroid category asks for */
+	for (int i = 0; i < 3; i++) {
+		static const char *const dev[] = { "binder", "hwbinder", "vndbinder" };
+
+		snprintf(path, sizeof(path), "/dev/binderfs/%s", dev[i]);
+		fd = open(path, O_RDWR | O_CLOEXEC);
+		if (fd < 0 || ioctl(fd, BINDER_VERSION, &bv)) {
+			printf(" binder : %s FAILED\n", path);
+			ok = 0;
+		} else {
+			printf(" binder : %s OK, protocol %d\n", path,
+			       bv.protocol_version);
+		}
+		if (fd >= 0)
+			close(fd);
+	}
+
 	/* PSI: Android's lmkd needs it */
 	read_file("/proc/pressure/memory", line, sizeof(line));
 	{
