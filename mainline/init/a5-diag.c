@@ -5,6 +5,7 @@
  *
  *   a5-diag panel   DECON to hardware (TE) refresh, proven in M1
  *   a5-diag info    kernel, CPUs, memory, eMMC (locked read-only first)
+ *   a5-diag system  SYSTEM partition: number, size, ext4 superblock
  *   a5-diag usb     USB clock/PHY state as S-Boot left it; turns on the
  *                   USB PLL and CCORE gates if they are off (M4 diagnosis)
  *   a5-diag muic    read the S2MU004 MUIC over /dev/i2c-N and, if the USB
@@ -118,7 +119,7 @@ static int cmd_info(void)
 	char rel[128], cpus[64], mem[4096], name[64], size[32];
 	unsigned long long sectors;
 	char *p;
-	int fd, ro = 1, parts = 0;
+	int fd, ro = 1, parts = 0, rw = 0;
 
 	read_file("/proc/sys/kernel/osrelease", rel, sizeof(rel));
 	read_file("/sys/devices/system/cpu/online", cpus, sizeof(cpus));
@@ -134,20 +135,88 @@ static int cmd_info(void)
 		printf(" emmc   : NOT FOUND\n");
 		return 0;
 	}
-	ioctl(fd, BLKROSET, &ro);	/* nothing in this image writes the eMMC */
+	/*
+	 * Nothing in this image writes the eMMC. BLKROSET only marks the
+	 * whole-disk device; force_ro (set_disk_ro) also covers every
+	 * partition, which each partition's "ro" attribute then reports.
+	 */
+	ioctl(fd, BLKROSET, &ro);
 	close(fd);
+	fd = open("/sys/block/mmcblk0/force_ro", O_WRONLY);
+	if (fd >= 0) {
+		write(fd, "1", 1);
+		close(fd);
+	}
 	read_file("/sys/block/mmcblk0/device/name", name, sizeof(name));
 	read_file("/sys/block/mmcblk0/size", size, sizeof(size));
 	sectors = strtoull(size, NULL, 10);
 	for (int i = 1; i < 64; i++) {
-		char path[64];
+		char path[64], val[8];
 
-		snprintf(path, sizeof(path), "/sys/class/block/mmcblk0p%d", i);
-		if (access(path, F_OK) == 0)
-			parts++;
+		snprintf(path, sizeof(path), "/sys/class/block/mmcblk0p%d/ro", i);
+		if (access(path, F_OK))
+			continue;
+		parts++;
+		read_file(path, val, sizeof(val));
+		if (strcmp(val, "1"))
+			rw++;
 	}
-	printf(" emmc   : %s, %llu MiB, %d partitions, READ-ONLY\n",
-	       name, sectors / 2048, parts);
+	printf(" emmc   : %s, %llu MiB, %d partitions, %s\n", name,
+	       sectors / 2048, parts, rw ? "SOME WRITABLE" : "all READ-ONLY");
+	return 0;
+}
+
+/* Find a GPT partition by name: "SYSTEM" -> 19, or -1 */
+static int find_part(const char *want)
+{
+	for (int i = 1; i < 64; i++) {
+		char path[64], ue[512], *p;
+
+		snprintf(path, sizeof(path), "/sys/class/block/mmcblk0p%d/uevent", i);
+		read_file(path, ue, sizeof(ue));
+		p = strstr(ue, "PARTNAME=");
+		if (p && !strncmp(p + 9, want, strlen(want)) &&
+		    (p[9 + strlen(want)] == '\n' || !p[9 + strlen(want)]))
+			return i;
+	}
+	return -1;
+}
+
+/* M5: describe the SYSTEM partition (read-only: superblock only) */
+static int cmd_system(void)
+{
+	char path[64], size[32], val[8];
+	unsigned char sb[1024];
+	int n = find_part("SYSTEM"), fd;
+
+	if (n < 0) {
+		printf(" system : no SYSTEM partition\n");
+		return 1;
+	}
+	snprintf(path, sizeof(path), "/sys/class/block/mmcblk0p%d/size", n);
+	read_file(path, size, sizeof(size));
+	snprintf(path, sizeof(path), "/sys/class/block/mmcblk0p%d/ro", n);
+	read_file(path, val, sizeof(val));
+	printf(" system : mmcblk0p%d, %s sectors = %llu MiB, ro=%s\n", n, size,
+	       strtoull(size, NULL, 10) / 2048, val);
+
+	snprintf(path, sizeof(path), "/dev/mmcblk0p%d", n);
+	fd = open(path, O_RDONLY);
+	if (fd < 0 || pread(fd, sb, sizeof(sb), 1024) != sizeof(sb)) {
+		printf(" system : superblock read FAILED\n");
+		return 1;
+	}
+	close(fd);
+	if (sb[0x38] == 0x53 && sb[0x39] == 0xef) {	/* s_magic */
+		unsigned int bs = 1024u << (sb[0x18] | sb[0x19] << 8);	/* s_log_block_size */
+		unsigned long long blocks = sb[4] | sb[5] << 8 | sb[6] << 16 |
+					    (unsigned long long)sb[7] << 24;
+
+		printf(" system : ext4, label \"%.16s\", %llu MiB filesystem\n",
+		       (char *)sb + 0x78, blocks * bs >> 20);
+	} else {
+		printf(" system : not ext4 (bytes 1080: %02x %02x)\n", sb[0x38], sb[0x39]);
+	}
 	return 0;
 }
 
@@ -417,6 +486,8 @@ int main(int argc, char **argv)
 		return cmd_panel();
 	if (!strcmp(argv[1], "info"))
 		return cmd_info();
+	if (!strcmp(argv[1], "system"))
+		return cmd_system();
 	if (!strcmp(argv[1], "usb"))
 		return cmd_usb();
 	if (!strcmp(argv[1], "muic"))
@@ -426,6 +497,6 @@ int main(int argc, char **argv)
 	if (!strcmp(argv[1], "keys"))
 		return cmd_keys();
 usage:
-	fprintf(stderr, "usage: a5-diag panel|info|usb|muic|usbregs|keys\n");
+	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|keys\n");
 	return 2;
 }

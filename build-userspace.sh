@@ -12,8 +12,9 @@ SYS="$U/sysroot"
 LINUX="$ROOT/upstream/linux"
 JOBS="$(nproc)"
 mkdir -p "$U/bin" "$U/out"
-# Reproducible: busybox's version banner takes its date from here.
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct)}"
+# Reproducible: busybox's version banner takes its date from here, the last
+# commit of this script (its only input), so a kept build stays valid.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct -- build-userspace.sh)}"
 export TZ=UTC LC_ALL=C
 
 clone_at() {  # url dir tag

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Galaxy A5 (2017) mainline Linux (current milestone: M4, USB networking).
+# Galaxy A5 (2017) mainline Linux (current milestone: M5, postmarketOS).
 # Builds: Linux 7.2 Image + A5 device tree, nolibc init + initramfs,
 # U-Boot (a5y17lte_defconfig, position independent), a FIT payload, and the
 # boot image S-Boot loads:  kernel = u-boot.bin, ramdisk = FIT.
@@ -14,10 +14,13 @@ B="$ROOT/build"
 OUT="$ROOT/out"
 mkdir -p "$B/fit" "$OUT"
 JOBS="$(nproc)"
+IMG="a5y17lte-mainline-${MILESTONE:-m5a}-boot.img"
 
 # Reproducible: the same commit gives the same image bytes on any machine.
-# Time = last commit (override with SOURCE_DATE_EPOCH); fixed build user/host.
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct)}"
+# Time = last commit that changed a build input, so committing the image and
+# notes doesn't change it (override with SOURCE_DATE_EPOCH); fixed user/host.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=%ct -- . \
+	':(exclude)out' ':(exclude)evidence' ':(exclude)*.md')}"
 export TZ=UTC LC_ALL=C
 export KBUILD_BUILD_TIMESTAMP="$(date -d "@$SOURCE_DATE_EPOCH")" KBUILD_BUILD_VERSION=1
 export KBUILD_BUILD_USER=a5y17lte KBUILD_BUILD_HOST=a5y17lte
@@ -85,6 +88,6 @@ python3 "$ROOT/tools/mkbootimg_v0.py" pack \
 	--kernel "$B/u-boot/u-boot.bin" --ramdisk "$B/a5y17lte.fit" \
 	--base 0x40000000 --kernel_offset 0x00000000 --ramdisk_offset 0x01000000 \
 	--tags_offset 0x00000100 --second_offset 0x00f00000 --pagesize 2048 \
-	-o "$OUT/a5y17lte-mainline-m4e-boot.img"
-python3 "$ROOT/tools/mkbootimg_v0.py" info "$OUT/a5y17lte-mainline-m4e-boot.img"
-( cd "$OUT" && sha256sum a5y17lte-mainline-m4e-boot.img | tee a5y17lte-mainline-m4e-boot.img.sha256 )
+	-o "$OUT/$IMG"
+python3 "$ROOT/tools/mkbootimg_v0.py" info "$OUT/$IMG"
+( cd "$OUT" && sha256sum "$IMG" | tee "$IMG.sha256" )
