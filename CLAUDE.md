@@ -25,12 +25,12 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
 ### Where we are (end of 2026-10-19)
 - M5a PASSED on the phone (EVIDENCE 19a): SYSTEM = mmcblk0p19, 5083496448 B;
   EFS = mmcblk0p3, 20971520 B; USERDATA = mmcblk0p25.
-- M5b BUILT, not on the phone yet: ./build-pmos.sh ->
-  build/pmos/samsung-a5y17lte-root.img, 686817280 B, sha256 06e88091addeafbb…
-  (see the .sha256 file), ext4 "pmOS_root", e2fsck clean, OpenRC (pinned:
-  pmOS console UI now defaults to systemd), sshd + unudhcpd.usb0 + nftables,
-  getty on ttyGS0, user "user" with ~/.ssh/id_ed25519.pub, password 147147
-  (placeholder; change with passwd). os-release says "Nura edge".
+- M5b rootfs (first build, 686817280 B, sha256 06e88091addeafbb…, written in
+  M5c; superseded by the M5e rootfs below): ./build-pmos.sh -> ext4
+  "pmOS_root", e2fsck clean, OpenRC (pinned: pmOS console UI now defaults to
+  systemd), sshd + unudhcpd.usb0 + nftables, getty on ttyGS0, user "user" with
+  ~/.ssh/id_ed25519.pub, password 147147 (placeholder; change with passwd).
+  os-release says "Nura edge".
 - M5c steps 1-2 DONE (TWRP, read-only): by-name
   /dev/block/platform/13540000.dwmmc0/by-name/{EFS,SYSTEM} -> p3/p19, sizes
   match. Backups in ~/a5-backup (NOT in git; EFS has the IMEI):
@@ -42,13 +42,40 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   modem nv_data, presumably a Sailfish boot; second backup
   EFS-p3-20261019-1440.img). TWRP mounts SYSTEM (/system_root) and EFS at
   startup, so later SYSTEM hashes change; check with e2fsck instead.
+- M5e rootfs ON SYSTEM now (EVIDENCE 23, 23a): build/pmos/samsung-a5y17lte-root.img,
+  688914432 B, sha256 bac1e0c6…, device-samsung-a5y17lte 3-r2, kernel pkg 7.2-r1.
+  Written in M5e step 2b, read back and fsck'd clean. Restore point for the M5c
+  rootfs: ~/a5-backup/SYSTEM-p19-pmos-m5c.img (first 686817280 B, sha256
+  06e88091…, same as the M5c root.img).
 - Rollback: `adb exec-in "dd of=<by-name>/SYSTEM bs=4M" < ~/a5-backup/SYSTEM-p19.img`
   (5 GB, won't fit in TWRP /tmp), then check for sha256 17530cf1….
 - android-w0 merged into main (d3b6283).
-- M5d BUILT (EVIDENCE 22), phone test next: out/a5y17lte-mainline-m5d-boot.img,
-  sha256 7ab5ddd7…. Boots Nura from SYSTEM ro (force_ro=1) under a tmpfs
-  overlay, so no eMMC writes; hold Volume Down at the 3 s prompt -> rescue image.
-- Then M5e: read-write root, resize2fs, apk via PC NAT (needs Jimmy's OK).
+- M5d PASSED (EVIDENCE 22a): Nura boots from SYSTEM read-only under a tmpfs overlay.
+- M5e PASSED on the phone (EVIDENCE 24, 24b): out/a5y17lte-mainline-m5e-boot.img,
+  sha256 e38f49cd… (commit 66ba460 fixed lock-except). Nura runs read-write on
+  SYSTEM (mmcblk0p19) only; the other 24 partitions stay read-only, but the raw
+  /dev/mmcblk0 node is writable then (no flag can avoid that). A 50 MB file
+  (sha256 7558406d…f3b8) survived a hard reboot; SYSTEM pulled to the PC:
+  e2fsck -fy clean. Known bug: `sudo reboot` in Nura hangs on the Samsung logo
+  (recovery forces a reboot). TWRP automounts EFS, so its hash changes (now
+  a65f32b8…) without Nura touching it.
+- M5e steps 1-4 ALL DONE (EVIDENCE 23-25b): SYSTEM grown online from 168192 to
+  1241088 blocks (4848 MiB), df -h / = 4.6G, 12% used; after a reboot the PC's
+  e2fsck -fn on the pulled SYSTEM is completely clean (6802/532608 files,
+  176027/1241088 blocks). resize2fs can't run on the live root (EBUSY:
+  CONFIG_BLK_DEV_WRITE_MOUNTED is off), so use mainline/tools/ext4-grow.c
+  (ioctl on the mount point; static binary build/ext4-grow-aarch64, not in git).
+- Known bug: `sudo reboot` in Nura hangs on the Samsung logo (repeatable);
+  workaround: Volume Down + Power to force off, then power on.
+- M5e step 5 PASSED (EVIDENCE 26): internet via PC NAT. PC: ip_forward, iptables
+  MASQUERADE 172.16.42.0/24 -> wlp2s0 plus DOCKER-USER ACCEPTs for
+  enx02a517000002 (Docker's FORWARD is DROP). Phone, RAM only, redo each boot:
+  `ip route add default via 172.16.42.2 dev usb0`, a resolv.conf with
+  nameserver 1.1.1.1 bind-mounted over /etc/resolv.conf (systemd-resolved stub
+  conflict), clock via `date -u -s` (no RTC). `apk update` OK, 37182 packages.
+  M5e (all 5 steps) is COMPLETE.
+- NEXT (not started): make route/DNS/clock persistent in the device package;
+  fix the reboot hang; then touchscreen -> Phosh (roadmap below).
 
 ## Roadmap after M5 (Jimmy, 2026-10-19)
 Two OSes on ONE mainline kernel + DT: Nura/postmarketOS (primary, on SYSTEM)

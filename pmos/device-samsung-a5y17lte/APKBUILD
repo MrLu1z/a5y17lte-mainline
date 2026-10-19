@@ -2,8 +2,8 @@
 maintainer="Jimmy <fakeandroit@gmail.com>"
 pkgname=device-samsung-a5y17lte
 pkgdesc="Samsung Galaxy A5 (2017)"
-pkgver=2
-pkgrel=0
+pkgver=3
+pkgrel=2
 url="https://github.com/android-a5y7lte/xnu-a5y17lte"
 license="MIT"
 arch="aarch64"
@@ -13,7 +13,13 @@ depends="
 	postmarketos-base
 "
 makedepends="devicepkg-dev"
-source="deviceinfo"
+subpackages="$pkgname-openrc:openrc"
+install="$pkgname-openrc.post-install $pkgname-openrc.post-upgrade"
+source="
+	deviceinfo
+	90-a5y17lte-usb0.conf
+	unudhcpd.usb0.confd
+"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -21,6 +27,18 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+	install -Dm644 "$srcdir"/90-a5y17lte-usb0.conf \
+		"$pkgdir"/etc/NetworkManager/conf.d/90-a5y17lte-usb0.conf
+}
+
+openrc() {
+	# hwclock -> swclock (no RTC driver yet, see the post-install), and
+	# unudhcpd on usb0 answers as 172.16.42.1
+	install_if="$pkgname=$pkgver-r$pkgrel openrc"
+	install="$subpkgname.post-install $subpkgname.post-upgrade"
+	depends="openrc"
+	install -Dm644 "$srcdir"/unudhcpd.usb0.confd \
+		"$subpkgdir"/etc/conf.d/unudhcpd.usb0
 }
 
 sha512sums="

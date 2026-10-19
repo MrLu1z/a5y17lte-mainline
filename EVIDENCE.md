@@ -1060,3 +1060,172 @@ drivers as present. The release strings must match first: the FIT kernel says
 - **New root.img:** 688,914,432 B, sha256 `ef09f3b78962f52b999bc38dee79febb213347eb1a53b23771be12b488a07d72`, e2fsck clean.
 - **Still needed:** the boot image must also be rebuilt (the M5d FIT kernel
   is still `7.2.0+`); that comes with M5e.
+
+## 23. Milestone 5e: Nura read-write on SYSTEM (built 2026-10-19, not yet tested on the phone)
+
+**Boot image** `out/a5y17lte-mainline-m5e-boot.img` (14,624,784 B, sha256
+`bc0ab7679a415460c125ed853fcd73e38d4d2c397379ae39c8b4b64797dddd66`, from 69d8a95).
+- Kernel `7.2.0-a5y17lte`; all fragment options applied.
+- 3 s prompt: no key → `a5-diag lock-except SYSTEM`, then SYSTEM mounted rw
+  (`errors=remount-ro`) and `switch_root`. The lock sets BLKROSET on the raw
+  disk and the other 24 partitions, then sets force_ro to 0, then checks each
+  partition's `ro` attribute and BLKROGET on the disk; `/sys/block/mmcblk0/ro`
+  can't be used, because `disk_ro_show` shows only the disk flag. Volume Up
+  → M5d RAM mode; Volume Down → rescue. Any failure → force_ro 1 → rescue.
+- Checks: busybox (aarch64, qemu-user) `sh -n` on the init; the real
+  key-dispatch block with a stub `a5-diag` (exit 10 → rescue, 11 →
+  `boot_nura ram`, 1 → `boot_nura rw`); emulated U-Boot with the FIT at
+  0x41000000 and 0x5A000000 reaches the Linux entry, all hashes OK. Kernel
+  ends 0x48ce0000. `lock-except` itself only runs on the phone (no
+  `mmcblk0` on the PC).
+
+**Rootfs** `build/pmos/samsung-a5y17lte-root.img` (688,914,432 B, sha256
+`bac1e0c63d11bcfdddf29cf2048e08333c933e72893dfea59b0a7e7e1f30bccc`).
+- Packages: device-samsung-a5y17lte 3-r2 (+ -openrc),
+  linux-postmarketos-exynos7880 7.2-r1, doas, sudo-rs.
+- Checked on the image: e2fsck clean; `/usr/lib/modules/7.2.0-a5y17lte`;
+  `modprobe -n` exits 0 for zram and ext4; the boot runlevel has `swclock`
+  and no `hwclock`; the usb0 settings for NetworkManager and unudhcpd;
+  `authorized_keys` = Jimmy's key; sshd enabled (`/usr/sbin/sshd.pam`).
+- pmbootstrap installs into a fresh rootfs each build (`--zap`).
+  `postmarketos-base-openrc`'s post-install adds hwclock back after ours;
+  build-pmos.sh removes the link.
+- **Host side effect:** `pmbootstrap shutdown` unregisters the host's
+  qemu-aarch64 binfmt; `sudo systemctl restart systemd-binfmt` restores it.
+
+### 23a. M5e step 2a-2c: new rootfs written to SYSTEM (2026-10-19, TWRP)
+
+- **2a (read-only).** By-name EFS → p3, SYSTEM → p19 (5,083,496,448 B), USERDATA
+  → p25; nothing mounted. Backup `~/a5-backup/SYSTEM-p19-pmos-m5c.img` (first
+  686,817,280 B): sha256 `06e88091…` on the phone and the PC, identical to the
+  M5c root.img. So the pmOS SYSTEM was byte-unchanged through M5d (ro,noload)
+  and every TWRP start: TWRP doesn't mount this filesystem.
+- **EFS.** `211aaf7b…`, where after M5c it was `5f6cfe57…`. Compared with
+  `EFS-p3-20261019-1440.img`, one 4K block differs: the superblock (mount
+  count 337 → 338, last mount 16:00:18), i.e. one TWRP start. No file
+  changed.
+- **2b.** `adb push` to TWRP `/tmp` (18.5 MB/s), phone sha256 `bac1e0c6…`;
+  `dd if=/tmp/root.img of=/dev/block/platform/13540000.dwmmc0/by-name/SYSTEM
+  bs=4M && sync`: 688,914,432 B in 8.0 s, exit 0.
+- **2c.** After `blockdev --flushbufs` + `drop_caches`, `head -c 688914432`
+  of SYSTEM: sha256 `bac1e0c6…`. The PC copy of the read-back gives the
+  same hash; e2fsck 1.47.0 clean (`pmOS_root`, UUID `9394aaf4…`, matching
+  its fstab). EFS still `211aaf7b…`. `/tmp/root.img` removed.
+- Next: Jimmy flashes the M5e boot image (2d) and does the first boot (2e).
+
+## 24. M5e boot test: "lock : check FAILED (1)" and the fix (2026-10-19)
+
+**Phone result.** Kernel and SYSTEM (`pmOS_root`) fine; normal boot → `lock : check
+FAILED (1), force_ro back to 1` → rescue. Nothing was unlocked.
+
+**Cause (kernel source, v7.2, and reproduced on the PC).** `bdev_read_only(bdev)`
+= `BD_READ_ONLY` of that bdev **or** `get_disk_ro(disk)`, and `get_disk_ro()` =
+`BD_READ_ONLY` of the *whole-disk* bdev (`disk->part0`) or `GD_READ_ONLY`
+(`include/linux/blkdev.h:827-836`). So BLKROSET on `/dev/mmcblk0` makes every
+partition read-only, including the kept one; the M5e check `ro[SYSTEM] == 0`
+could never pass (the one failure), and the earlier "whole disk BLKROGET = 1"
+check can't hold together with a writable partition. Loop-device test on the
+PC (6 partitions-style: disk setro, p1/p3 setro, p2 setrw): p2 stays ro=1; with
+the disk flag cleared instead: disk 0, p1/p3 1, p2 0.
+
+**Fix.** `lock-except` now clears the whole-disk flag (BLKROSET 0; `a5-diag info`
+had set it), sets BLKROSET 1 on every other partition and 0 on the kept one,
+sets force_ro 0, and checks each partition's `ro` plus BLKROGET disk = 0. It
+prints every step (device, ioctl, value, errno); init saves it to
+`/tmp/lock.log` and shows it. **Consequence:** the raw `/dev/mmcblk0` node is
+writable in the rw boot; no flag can avoid that while one partition is
+writable. The other 24 partitions are read-only; mmcblk0boot0/1 keep their own
+force_ro = 1.
+
+### 24b. M5e step 3: write/reboot test PASSED (2026-10-19)
+
+Image `out/a5y17lte-mainline-m5e-boot.img` (sha256 `e38f49cd…`, commit 66ba460).
+- **Write test.** A 50 MB file written in Nura (read-write SYSTEM) has sha256
+  `7558406d…f3b8` and was still intact after a hard reboot.
+- **Reboot bug.** `sudo reboot` in Nura hangs on the Samsung logo; the reboot
+  had to be forced through recovery. Not diagnosed yet (no reset/poweroff
+  driver for the 7880 in our tree is the likely area; unverified).
+- **Filesystem.** SYSTEM pulled to the PC: `e2fsck -fn` reports only the
+  orphan_file flag (expected with -n); `e2fsck -fy` confirms clean, zero real
+  errors.
+- **EFS.** Now `a65f32b894a23b331cb990a4b76c5b715e8542f9e522ec3ca023a40d0f4b2378`,
+  changed again. Cause: TWRP automounts EFS, not Nura (Nura keeps it read-only).
+- Not started: resize2fs, apk via PC NAT.
+
+## 25. M5e step 4: resize2fs fails with EBUSY on the mounted root (2026-10-19)
+
+**Symptom (phone, Nura rw).** `resize2fs /dev/mmcblk0p19` (1.47.4, as root):
+`Resource busy while opening /dev/mmcblk0p19`, also with `-d 1`. `/proc/mounts`
+and `/etc/mtab` correctly show p19 on `/` ext4 rw; `/dev/root` → mmcblk0p19.
+`fuser -m` lists every process (it is the root filesystem), so it can't help.
+
+**Cause.** The built kernel `.config` has `# CONFIG_BLK_DEV_WRITE_MOUNTED is not
+set` (`block/Kconfig:77`, default y, but our allnoconfig base leaves it off).
+With it off, the kernel refuses any write-open of a block device that a
+filesystem has mounted (`BLK_OPEN_RESTRICT_WRITES`, `block/bdev.c`) with EBUSY.
+resize2fs opens the device read-write even for an online resize. No process
+holds the node; lock-except closes its fds and never uses O_EXCL.
+
+**Workaround, no kernel change.** `mainline/tools/ext4-grow.c` issues
+`EXT4_IOC_RESIZE_FS` on the mount point (what resize2fs does after the open;
+no device open needed). Static aarch64 binary: `build/ext4-grow-aarch64`
+(not in git, git-ignored). PC test on a loop-mounted copy of the M5e root.img
+extended to 5,083,496,448 B: `ext4-grow mnt 1241088` → `done: 1202956 blocks`
+(statfs, overhead excluded), 1024369 blocks free, unmount, `e2fsck -fn` clean
+(1241088 blocks). Not yet run on the phone.
+
+Keeping the option off also blocks raw writes to the mounted SYSTEM node, which
+is a useful guard; the alternative (CONFIG_BLK_DEV_WRITE_MOUNTED=y) needs a new
+boot image.
+
+### 25a. M5e step 4: root grown online on the phone (2026-10-19)
+
+Binary `build/ext4-grow-aarch64` (sha256 `55d8e7c1…`), run in Nura as root:
+`sudo /tmp/ext4-grow / 1241088`.
+- Output: `/: block size 4096, now 158492 blocks, growing to 1241088` →
+  `done: 1202956 blocks` (statfs counts, overhead excluded; same numbers as the
+  PC test).
+- `df -h /`: 4.6G total, 538.6M used, 3.9G available, 12%.
+- dmesg: `EXT4-fs (mmcblk0p19): resized filesystem from 168192 to 1241088
+  blocks`, then `resized filesystem to 1241088`.
+- resize2fs itself stays blocked by CONFIG_BLK_DEV_WRITE_MOUNTED being off
+  (EVIDENCE 25).
+- Not yet done: reboot and `e2fsck -fn`/`-fy` of the pulled SYSTEM on the PC
+  to confirm the grown filesystem is clean.
+
+### 25b. M5e step 4 PASSED: grown, rebooted, verified clean (2026-10-20)
+
+- **Reboot.** `sudo reboot` hung on the Samsung logo again; repeatable. Same
+  workaround: forced power-off (Volume Down + Power), then a normal power-on
+  into TWRP/recovery. Still undiagnosed.
+- **Check.** SYSTEM pulled to the PC after the reboot; `e2fsck -fn` on the grown
+  filesystem: completely clean, zero errors, and not even the orphan_file
+  flag this time. 6802/532608 files, 176027/1241088 blocks used.
+- M5e steps 1-4 are all done: boot image with the lock fix (EVIDENCE 24, 24b),
+  write/reboot test, online grow (25, 25a), reboot and fsck (25b).
+
+## 26. M5e step 5: internet through PC NAT, `apk update` works (PASSED 2026-10-20)
+
+**PC side** (runtime only, gone at PC reboot): `ip_forward` = 1; iptables
+MASQUERADE for 172.16.42.0/24 out `wlp2s0`; two ACCEPT rules in `DOCKER-USER`
+for `enx02a517000002` ↔ `wlp2s0` (Docker's `FORWARD` policy is DROP, so
+MASQUERADE alone is not enough).
+
+**Phone side** (RAM only, repeat after every boot):
+- Default route `via 172.16.42.2 dev usb0`.
+- DNS: a resolv.conf with `nameserver 1.1.1.1` bind-mounted over
+  `/etc/resolv.conf`; this got round the conflict with the systemd-resolved
+  stub resolv.conf that Jimmy reported.
+- Clock set by hand (`date -u -s`): Nura has no RTC and the forced power-off
+  never saves the time, so it must be set after each boot before TLS works.
+- `a5-diag` is not in Nura (only in the init and rescue image); the MUIC was
+  already on USB from the boot, so nothing was needed there.
+
+**Results.** `ping 172.16.42.2` OK, `ping 1.1.1.1` OK, `nslookup
+dl-cdn.alpinelinux.org` OK, `sudo apk update` OK: `37182 distinct packages
+available`. The apk index cache under `/var/cache/apk` is the only write to
+SYSTEM so far; no package was installed.
+
+**Not made persistent yet:** route, DNS and clock live in RAM; the PC rules are
+lost at PC reboot. Making them permanent belongs in the device package (an
+OpenRC script), through a rootfs rebuild.

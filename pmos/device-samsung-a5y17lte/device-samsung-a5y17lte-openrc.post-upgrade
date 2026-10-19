@@ -1,0 +1,6 @@
+#!/bin/sh
+# No RTC driver yet (S2MPU05 RTC): hwclock fails at every boot. swclock
+# keeps the clock moving forward from the last shutdown instead.
+rc-update -q del hwclock boot 2>/dev/null
+rc-update -q add swclock boot
+exit 0

@@ -13,8 +13,12 @@
  *   a5-diag usbregs DWC3 and USB PHY register dump, UDC state
  *   a5-diag android W0: simpledrm KMS device, binderfs + a binder device
  *                   (BINDER_VERSION), PSI - what Waydroid needs
- *   a5-diag held MS exit 0 if Volume Down is held at any time within MS ms
- *                   (M5d: stay in this rescue image instead of booting Nura)
+ *   a5-diag held MS which volume key is held at any time within MS ms:
+ *                   exit 10 Volume Down (rescue), 11 Volume Up (Nura in RAM),
+ *                   1 neither
+ *   a5-diag lock-except NAME
+ *                   M5e: every eMMC block device read-only except the GPT
+ *                   partition NAME, checked via each partition's "ro"
  *   a5-diag keys    PID 1 loop: print key presses, hold Power 3 s ->
  *                   reboot into recovery (TWRP), reap orphaned children
  *
@@ -588,7 +592,7 @@ static int cmd_android(void)
 	return !ok;
 }
 
-/* M5d escape hatch: is Volume Down held now or within the next ms? */
+/* M5d/M5e boot choice: is a volume key held now or within the next ms? */
 static int cmd_held(int ms)
 {
 	long long end = now_ms() + ms;
@@ -607,13 +611,136 @@ static int cmd_held(int ms)
 		for (int i = 0; i < nfds; i++) {
 			unsigned char keys[KEY_MAX / 8 + 1] = { 0 };
 
-			if (ioctl(fds[i], EVIOCGKEY(sizeof(keys)), keys) >= 0 &&
-			    keys[KEY_VOLUMEDOWN / 8] & (1 << (KEY_VOLUMEDOWN % 8)))
-				return 0;
+			if (ioctl(fds[i], EVIOCGKEY(sizeof(keys)), keys) < 0)
+				continue;
+			if (keys[KEY_VOLUMEDOWN / 8] & (1 << (KEY_VOLUMEDOWN % 8)))
+				return 10;
+			if (keys[KEY_VOLUMEUP / 8] & (1 << (KEY_VOLUMEUP % 8)))
+				return 11;
 		}
 		usleep(50000);
 	} while (now_ms() < end);
 	return 1;
+}
+
+/*
+ * M5e: let only one partition be written. bdev_read_only() of every bdev
+ * includes get_disk_ro(), and that includes the whole-disk bdev's
+ * BD_READ_ONLY (EVIDENCE 24): BLKROSET on /dev/mmcblk0 would make the kept
+ * partition read-only too. So the whole-disk flag is cleared (a5-diag info
+ * sets it), every other partition gets BLKROSET 1, the kept one 0, and then
+ * the disk-wide force_ro goes to 0. The raw /dev/mmcblk0 node is therefore
+ * writable (no flag can prevent that and keep one partition writable);
+ * mmcblk0boot0/1 keep their own force_ro = 1.
+ */
+static int set_ro(const char *dev, int ro)
+{
+	int fd = open(dev, O_RDONLY), r, e;
+
+	if (fd < 0) {
+		printf(" lock   : open %s: %s\n", dev, strerror(errno));
+		return -1;
+	}
+	r = ioctl(fd, BLKROSET, &ro);
+	e = errno;
+	close(fd);
+	if (r)
+		printf(" lock   : BLKROSET %s=%d: %s\n", dev, ro, strerror(e));
+	else
+		printf(" lock   : BLKROSET %s=%d ok\n", dev, ro);
+	return r;
+}
+
+static int get_ro(const char *dev)
+{
+	int fd = open(dev, O_RDONLY), ro = -1;
+
+	if (fd < 0 || ioctl(fd, BLKROGET, &ro))
+		printf(" lock   : BLKROGET %s: %s\n", dev, strerror(errno));
+	else
+		printf(" lock   : BLKROGET %s = %d\n", dev, ro);
+	if (fd >= 0)
+		close(fd);
+	return ro;
+}
+
+static int write_force_ro(const char *val)
+{
+	int fd = open("/sys/block/mmcblk0/force_ro", O_WRONLY), r = -1;
+
+	if (fd >= 0) {
+		r = write(fd, val, 1) == 1 ? 0 : -1;
+		printf(" lock   : force_ro <- %s: %s\n", val, r ? strerror(errno) : "ok");
+		close(fd);
+	} else {
+		printf(" lock   : open force_ro: %s\n", strerror(errno));
+	}
+	return r;
+}
+
+static int cmd_lock_except(const char *name)
+{
+	char path[64], val[8];
+	int keep = find_part(name), bad = 0, parts = 0;
+
+	if (keep < 0) {
+		printf(" lock   : no %s partition, eMMC stays read-only\n", name);
+		return 1;
+	}
+	read_file("/sys/block/mmcblk0/force_ro", val, sizeof(val));
+	printf(" lock   : start: force_ro = %s, keep = mmcblk0p%d\n", val, keep);
+	if (set_ro("/dev/mmcblk0", 0))
+		bad++;
+	for (int i = 1; i < 64; i++) {
+		snprintf(path, sizeof(path), "/dev/mmcblk0p%d", i);
+		if (access(path, F_OK))
+			continue;
+		/* the kept partition is set explicitly to 0: it may already
+		 * carry BD_READ_ONLY from the partition scan */
+		if (set_ro(path, i == keep ? 0 : 1))
+			bad++;
+	}
+	if (bad) {
+		printf(" lock   : BLKROSET failed on %d devices, eMMC stays read-only\n", bad);
+		return 1;
+	}
+	if (write_force_ro("0")) {
+		printf(" lock   : cannot clear force_ro\n");
+		return 1;
+	}
+	read_file("/sys/block/mmcblk0/force_ro", val, sizeof(val));
+	printf(" lock   : force_ro now reads %s\n", val);
+
+	for (int i = 1; i < 64; i++) {
+		snprintf(path, sizeof(path), "/sys/class/block/mmcblk0p%d/ro", i);
+		if (access(path, F_OK))
+			continue;
+		parts++;
+		read_file(path, val, sizeof(val));
+		if (strcmp(val, i == keep ? "0" : "1")) {
+			printf(" lock   : BAD mmcblk0p%d ro = '%s', want %s\n", i, val,
+			       i == keep ? "0" : "1");
+			bad++;
+		} else {
+			printf(" lock   : mmcblk0p%d ro = %s ok\n", i, val);
+		}
+	}
+	/* the whole disk must now read 0 (its flag is what every partition
+	 * inherits); report it, don't require it to be 1 */
+	read_file("/sys/block/mmcblk0/ro", val, sizeof(val));
+	printf(" lock   : /sys/block/mmcblk0/ro (disk flag) = %s\n", val);
+	if (get_ro("/dev/mmcblk0") != 0) {
+		printf(" lock   : BAD mmcblk0 BLKROGET != 0\n");
+		bad++;
+	}
+	if (bad) {
+		write_force_ro("1");
+		printf(" lock   : check FAILED (%d), force_ro back to 1\n", bad);
+		return 1;
+	}
+	printf(" lock   : mmcblk0p%d (%s) writable; the other %d partitions read-only (raw mmcblk0 node writable)\n",
+	       keep, name, parts - 1);
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -637,9 +764,11 @@ int main(int argc, char **argv)
 		return cmd_android();
 	if (!strcmp(argv[1], "held") && argc > 2)
 		return cmd_held(atoi(argv[2]));
+	if (!strcmp(argv[1], "lock-except") && argc > 2)
+		return cmd_lock_except(argv[2]);
 	if (!strcmp(argv[1], "keys"))
 		return cmd_keys();
 usage:
-	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|android|held MS|keys\n");
+	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|android|held MS|lock-except NAME|keys\n");
 	return 2;
 }
