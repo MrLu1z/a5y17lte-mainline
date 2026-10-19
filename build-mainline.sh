@@ -24,6 +24,9 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=
 export TZ=UTC LC_ALL=C
 export KBUILD_BUILD_TIMESTAMP="$(date -d "@$SOURCE_DATE_EPOCH")" KBUILD_BUILD_VERSION=1
 export KBUILD_BUILD_USER=a5y17lte KBUILD_BUILD_HOST=a5y17lte
+# release = 7.2.0 + CONFIG_LOCALVERSION, the same as the pmOS kernel package
+# (an empty LOCALVERSION stops setlocalversion adding "+" for the git tree)
+export LOCALVERSION=
 
 for t in clang ld.lld llvm-objcopy flex bison python3 gzip; do
 	command -v "$t" >/dev/null || { echo "missing tool: $t"; exit 1; }

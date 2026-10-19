@@ -53,6 +53,7 @@ work = $W
 device = samsung-a5y17lte
 ui = console
 service_manager = openrc
+extra_packages = doas
 user = user
 hostname = a5y17lte
 ssh_keys = True
