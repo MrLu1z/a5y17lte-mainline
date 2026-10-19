@@ -244,14 +244,6 @@
 	};
 };
 
-	key_home: key-home-pins {
-		samsung,pins = "gpa1-7";
-		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
-		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
-		samsung,pin-drv = <EXYNOS5433_PIN_DRV_FAST_SR1>;
-	};
-};
-
 /*
  * [D] vendor DTS: Mali-T830 MP3 (Midgard v5), base 0x11400000, IRQs
  * 282/283/281, power domain pd_g3d. Clock via temporary fixed-clock
