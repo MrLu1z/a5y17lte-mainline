@@ -823,3 +823,49 @@ screen console and SSH work as in M4. Readings taken over SSH (read-only):
 
 All 8 CPUs online; MemTotal 2597040 kB (the extra built-in code costs about 5 MB against M2's 2602388 kB).
 
+
+## 21. Milestone 5b/5c: postmarketOS rootfs built and written to SYSTEM (2026-10-19)
+
+(Section 20 is W0 on branch android-w0.)
+
+**M5b.** `./build-pmos.sh` (pmaports f3f92690, pmbootstrap 7d23010; our
+`pmos/` device and kernel packages): `samsung-a5y17lte-root.img`, 686,817,280
+bytes, sha256 `06e88091addeafbb295de4d6dd45428f14e46cc49676d10bc2b2cbf2c63b676b`.
+ext4 `pmOS_root` (features include `metadata_csum`, `64bit`, `orphan_file`),
+e2fsck 1.47 clean. OpenRC (pinned: the console UI now defaults to systemd),
+inittab getty on ttyGS0; runlevels have `sshd`, `unudhcpd.usb0`, `nftables`,
+`chronyd`. `/usr/lib/os-release`: `PRETTY_NAME="Nura edge"`. pmbootstrap's
+`/etc/fstab` had a `/boot` line for a pmOS_boot partition this phone doesn't
+have, and was owned by the build user (1000:1000); build-pmos.sh drops the
+line and makes the file 0:0. The `/` line keeps `defaults`, so OpenRC would
+remount root read-write.
+
+**M5c steps 1-2 (TWRP, read-only).** TWRP's by-name links
+(`/dev/block/platform/13540000.dwmmc0/by-name`) map EFS → mmcblk0p3 (20,971,520 B)
+and SYSTEM → mmcblk0p19 (5,083,496,448 B), the same as mainline (19a).
+Backups in `~/a5-backup` (not in git): EFS `5efb6122…`, SYSTEM `17530cf1…`;
+phone and PC hashes match, and e2fsck -fn on the SYSTEM copy is clean.
+
+**Before step 3 (re-check).** EFS had changed to `5f6cfe57…`: mount count
+333 → 337, plus the superblock, journal and the contents of `nv_data.bin` and
+`nv_data.bin.md5`. Those are the modem's NV data, which only an OS with the
+modem stack writes (not TWRP, not our images), so presumably Sailfish booted
+after 04:35. A second backup, `EFS-p3-20261019-1440.img`, was saved. SYSTEM
+had also changed (`fd8b3f19…`), but only in mount metadata: mount count
+71 → 79, last mounted on `/system_root`, with free blocks/inodes and lifetime
+writes unchanged. **TWRP mounts SYSTEM (`/system_root`) and EFS at startup**;
+it did so 3 s before the first backup too. So the SYSTEM backup is still a
+valid rollback.
+
+**M5c step 3: the first eMMC write (Jimmy's OK).** `adb push` to TWRP's tmpfs
+`/tmp` (18.3 MB/s), sha256 on the phone `06e88091…`, then
+`dd if=/tmp/root.img of=/dev/block/platform/13540000.dwmmc0/by-name/SYSTEM bs=4M && sync`:
+686,817,280 bytes, exit 0.
+- After `blockdev --flushbufs` + `drop_caches`, `head -c 686817280` of SYSTEM
+  gives sha256 `06e88091…`, the same as root.img.
+- TWRP's e2fsck 1.43.3 can't check it: `unsupported feature(s): FEATURE_C12`
+  (orphan_file, e2fsprogs 1.47). A read-back checked with e2fsck 1.47.0 on the
+  PC is clean: `pmOS_root: 6751/83904 files, 134672/167680 blocks`.
+- EFS is unchanged by the write (`5f6cfe57…`).
+- The rest of SYSTEM (after the 655 MiB image) still holds old data;
+  `resize2fs` in M5e grows the filesystem over it.

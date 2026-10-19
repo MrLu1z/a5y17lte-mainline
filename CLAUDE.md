@@ -36,12 +36,16 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   match. Backups in ~/a5-backup (NOT in git; EFS has the IMEI):
   EFS-p3.img sha256 5efb6122…, SYSTEM-p19.img sha256 17530cf1… (full list in
   ~/a5-backup/SHA256SUMS; phone and PC hashes match; e2fsck -fn clean).
-- NEXT: M5c step 3, the first eMMC write: only when Jimmy says so. In TWRP:
-  `adb push build/pmos/samsung-a5y17lte-root.img /tmp/root.img`, check
-  `adb shell sha256sum /tmp/root.img`, then
-  `adb shell 'dd if=/tmp/root.img of=/dev/block/platform/13540000.dwmmc0/by-name/SYSTEM bs=4M && sync'`.
-  Verify: `head -c 686817280 <by-name/SYSTEM> | sha256sum` = root.img hash,
-  `e2fsck -fn` on it, EFS hash unchanged. Rollback: write SYSTEM-p19.img back.
+- M5c step 3 DONE (EVIDENCE 21): root.img written to by-name/SYSTEM; read-back
+  sha256 = 06e88091…, e2fsck 1.47 clean on the PC (TWRP's e2fsck 1.43 can't:
+  orphan_file). EFS unchanged at 5f6cfe57… (it had changed before the write:
+  modem nv_data, presumably a Sailfish boot; second backup
+  EFS-p3-20261019-1440.img). TWRP mounts SYSTEM (/system_root) and EFS at
+  startup, so later SYSTEM hashes change; check with e2fsck instead.
+- Rollback: `adb exec-in "dd of=<by-name>/SYSTEM bs=4M" < ~/a5-backup/SYSTEM-p19.img`
+  (5 GB, won't fit in TWRP /tmp), then check for sha256 17530cf1….
+- NEXT: merge branch android-w0 into main first (W0 passed: binder, Waydroid
+  options, simpledrm; BOOT currently holds w0b), then M5d.
 - Then M5d: init mounts SYSTEM read-only and switch_roots. Keep force_ro=1 there:
   the fstab `/` line says `defaults`, so OpenRC would remount root read-write.
 
