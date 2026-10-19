@@ -1192,3 +1192,14 @@ Binary `build/ext4-grow-aarch64` (sha256 `55d8e7c1…`), run in Nura as root:
   (EVIDENCE 25).
 - Not yet done: reboot and `e2fsck -fn`/`-fy` of the pulled SYSTEM on the PC
   to confirm the grown filesystem is clean.
+
+### 25b. M5e step 4 PASSED: grown, rebooted, verified clean (2026-10-20)
+
+- **Reboot.** `sudo reboot` hung on the Samsung logo again; repeatable. Same
+  workaround: forced power-off (Volume Down + Power), then a normal power-on
+  into TWRP/recovery. Still undiagnosed.
+- **Check.** SYSTEM pulled to the PC after the reboot; `e2fsck -fn` on the grown
+  filesystem: completely clean, zero errors, and not even the orphan_file
+  flag this time. 6802/532608 files, 176027/1241088 blocks used.
+- M5e steps 1-4 are all done: boot image with the lock fix (EVIDENCE 24, 24b),
+  write/reboot test, online grow (25, 25a), reboot and fsck (25b).
