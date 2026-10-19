@@ -22,9 +22,33 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   reinstall. Still: don't touch USERDATA, and ask before each eMMC write.
 - Start console-only (SSH + apk), UI (Phosh/Plasma Mobile) after touchscreen.
 
+### Where we are (end of 2026-10-19)
+- M5a PASSED on the phone (EVIDENCE 19a): SYSTEM = mmcblk0p19, 5083496448 B;
+  EFS = mmcblk0p3, 20971520 B; USERDATA = mmcblk0p25.
+- M5b BUILT, not on the phone yet: ./build-pmos.sh ->
+  build/pmos/samsung-a5y17lte-root.img, 686817280 B, sha256 06e88091addeafbb…
+  (see the .sha256 file), ext4 "pmOS_root", e2fsck clean, OpenRC (pinned:
+  pmOS console UI now defaults to systemd), sshd + unudhcpd.usb0 + nftables,
+  getty on ttyGS0, user "user" with ~/.ssh/id_ed25519.pub, password 147147
+  (placeholder; change with passwd). os-release says "Nura edge".
+- M5c steps 1-2 DONE (TWRP, read-only): by-name
+  /dev/block/platform/13540000.dwmmc0/by-name/{EFS,SYSTEM} -> p3/p19, sizes
+  match. Backups in ~/a5-backup (NOT in git; EFS has the IMEI):
+  EFS-p3.img sha256 5efb6122…, SYSTEM-p19.img sha256 17530cf1… (full list in
+  ~/a5-backup/SHA256SUMS; phone and PC hashes match; e2fsck -fn clean).
+- NEXT: M5c step 3, the first eMMC write: only when Jimmy says so. In TWRP:
+  `adb push build/pmos/samsung-a5y17lte-root.img /tmp/root.img`, check
+  `adb shell sha256sum /tmp/root.img`, then
+  `adb shell 'dd if=/tmp/root.img of=/dev/block/platform/13540000.dwmmc0/by-name/SYSTEM bs=4M && sync'`.
+  Verify: `head -c 686817280 <by-name/SYSTEM> | sha256sum` = root.img hash,
+  `e2fsck -fn` on it, EFS hash unchanged. Rollback: write SYSTEM-p19.img back.
+- Then M5d: init mounts SYSTEM read-only and switch_roots. Keep force_ro=1 there:
+  the fstab `/` line says `defaults`, so OpenRC would remount root read-write.
+
 ## Rules
-- Test images keep the eMMC read-only (BLKROSET). Any eMMC write needs
-  Jimmy's explicit OK first.
+- Test images keep the eMMC read-only (/sys/block/mmcblk0/force_ro = 1;
+  BLKROSET alone never covered the partitions, EVIDENCE 19). Any eMMC write
+  needs Jimmy's explicit OK first.
 - Never touch ~/hadk or ~/sfos (Sailfish build trees).
 - Work in small milestones; each one is flashed and tested on the phone
   (TWRP → Install Image → Boot), with a photo/log recorded in EVIDENCE.md.
@@ -36,5 +60,6 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
 
 ## Build
 ./setup.sh (clones upstream/: linux, u-boot, k7880 reference, xPack GCC,
-unicorn), then ./build-userspace.sh and ./build-mainline.sh. U-Boot must be
-linked with GNU ld (xPack), not ld.lld.
+unicorn, pmaports, pmbootstrap), then ./build-userspace.sh and
+./build-mainline.sh (boot image, reproducible), then ./build-pmos.sh (pmOS
+rootfs; needs sudo). U-Boot must be linked with GNU ld (xPack), not ld.lld.
