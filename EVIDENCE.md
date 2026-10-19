@@ -960,7 +960,7 @@ valid rollback.
 - The rest of SYSTEM (after the 655 MiB image) still holds old data;
   `resize2fs` in M5e grows the filesystem over it.
 
-## 22. Milestone 5d: boot Nura from SYSTEM, read-only under a RAM overlay (built 2026-10-19, not yet tested on the phone)
+## 22. Milestone 5d: boot Nura from SYSTEM, read-only under a RAM overlay (PASSED on the phone 2026-10-19, see 22a)
 
 Includes W0 (merged, section 20). After the M5a/W0 checks, the gadget, the
 MUIC switch and `usb0 = 172.16.42.1`, `/init` waits 3 s for Volume Down
@@ -999,3 +999,38 @@ M4/W0 (dropbear root, telnet, udhcpd, serial shell, hold Power -> TWRP).
 - PC: DHCP 172.16.42.2 from unudhcpd; `ssh user@172.16.42.1` (key login;
   the host key is new on every boot); a getty on /dev/ttyACM0.
 - In Nura, `cat /sys/block/mmcblk0/force_ro` gives 1 and `findmnt /` shows overlay.
+
+### 22a. Hardware result for M5d: NURA BOOTS (2026-10-19)
+
+Jimmy flashed `a5y17lte-mainline-m5d-boot.img` (sha256 `7ab5ddd7…`).
+
+| Observation | Meaning |
+|---|---|
+| OpenRC boots, "Welcome to Nura!" | `switch_root` from our initramfs into busybox init + OpenRC on SYSTEM works |
+| `ssh user@172.16.42.1` with Jimmy's key | Gadget and usb0 survive `switch_root`; Nura's sshd, unudhcpd (172.16.42.2 to the PC) and nftables (usb* accepted) work |
+| `findmnt /`: overlay, `lowerdir=/nura/ro,upperdir=/nura/rw/upper` | Root is the RAM overlay over the read-only SYSTEM |
+| `/sys/block/mmcblk0/force_ro` = 1 | The eMMC stays read-only under Nura |
+| Over SSH (Claude): `id`: user in `wheel` (10); `free -m`: 2535 MiB total | |
+
+**OpenRC errors seen (Jimmy):**
+- `hwclock`: no RTC driver yet (the S2MPU05 RTC needs the PMIC on I2C).
+- Clock skew: the clock starts at Jan 1 with no RTC; file times are newer.
+- `logbookd.db` restore: every boot is a first boot (RAM overlay).
+- No wireless: no Wi-Fi driver yet.
+- `postmarketos-zram-swap failed to start`.
+
+**Root access.** `doas: not found` and `su` (root is locked) are expected:
+this pmaports commit uses sudo, not doas (postmarketos-base depends on
+`sudo-virt`, `_pmb_recommends="sudo-rs"`). `sudo-rs 0.2.15` is installed
+setuid root; `sudo -S id` with the user password gives `uid=0(root)`.
+
+**zram root cause.** `/usr/sbin/zramstart` runs under `set -e` and calls
+`modprobe -q zram num_devices=1` before `zramctl`. Our kernel has no modules
+and the rootfs has no `/lib/modules/7.2.0+`, so kmod exits 1 with
+`modprobe: FATAL: Module zram not found in directory /lib/modules/7.2.0+`,
+even though zram is built in: `/sys/block/zram0` exists and `comp_algorithm`
+offers `lzo-rle lzo lz4 zstd`. Fix: ship `modules.builtin` (+ `.modinfo`,
+depmod output) for the running kernel release, so modprobe treats built-in
+drivers as present. The release strings must match first: the FIT kernel says
+`7.2.0+` (untagged git tree), the pmOS package would say `7.2.0` (tarball).
+
