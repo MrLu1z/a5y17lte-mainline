@@ -72,7 +72,8 @@ grep -q "^$KERNEL_SHA512  linux-7.2.tar.xz$" "$PMA/device/testing/$K/APKBUILD" |
 
 echo "== build + install (console UI, SSH)"
 pmb build --force "$K" "$DEV"
-pmb install --split --password "${A5_PMOS_PASSWORD:-147147}"
+# --zap: a fresh rootfs every time (post-install scripts, no upgrade leftovers)
+pmb install --zap --split --password "${A5_PMOS_PASSWORD:-147147}"
 
 R="$W/chroot_native/home/pmos/rootfs/samsung-a5y17lte-root.img"
 sudo cp "$R" "$O/samsung-a5y17lte-root.img"
@@ -90,6 +91,10 @@ sif /etc/fstab gid 0
 sif /etc/fstab mode 0100644
 EOF
 rm -f "$F"
+# No RTC driver yet: device-samsung-a5y17lte-openrc enables swclock, but
+# postmarketos-base-openrc's post-install runs after it and adds hwclock back
+debugfs -w -R "rm /etc/runlevels/boot/hwclock" "$O/samsung-a5y17lte-root.img" >/dev/null 2>&1
+debugfs -R "ls /etc/runlevels/boot" "$O/samsung-a5y17lte-root.img" 2>/dev/null | tr -s ' ' '\n' | grep -E 'clock' || true
 debugfs -R "cat /etc/fstab" "$O/samsung-a5y17lte-root.img" 2>/dev/null
 e2fsck -fn "$O/samsung-a5y17lte-root.img" | tail -1
 ( cd "$O" && sha256sum samsung-a5y17lte-root.img | tee samsung-a5y17lte-root.img.sha256 )
