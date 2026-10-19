@@ -13,7 +13,7 @@ export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
-mkdir -p /dev/pts /tmp /run /root /etc/dropbear /sys/kernel/config /sys/kernel/debug
+mkdir -p /dev/pts /tmp /run /var/run /var/log /root /etc/dropbear /sys/kernel/config /sys/kernel/debug
 mount -t devpts devpts /dev/pts
 mount -t tmpfs tmpfs /tmp
 mount -t configfs configfs /sys/kernel/config
@@ -26,7 +26,7 @@ stty -echo -icanon 2>/dev/null
 
 echo
 echo "========================================="
-echo " Galaxy A5 (2017) - mainline Linux M4c"
+echo " Galaxy A5 (2017) - mainline Linux M4d"
 echo "========================================="
 a5-diag info
 a5-diag usb
@@ -77,7 +77,7 @@ a5-diag usbregs
 if ifconfig usb0 172.16.42.1 netmask 255.255.255.0 up 2>/dev/null; then
 	touch /tmp/udhcpd.leases
 	udhcpd /etc/udhcpd.conf
-	dropbear -R -B -E -p 22 2>/tmp/dropbear.log
+	dropbear -R -B -p 22 -P /var/run/dropbear.pid 2>/tmp/dropbear.log
 	telnetd -l /bin/sh -p 23
 	echo " net    : usb0 172.16.42.1 (PC gets 172.16.42.2 by DHCP)"
 	echo " net    : ssh root@172.16.42.1   (no password)"

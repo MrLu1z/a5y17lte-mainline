@@ -715,3 +715,22 @@ Photos: `evidence/hw-mainline-m4c-{muic,pc-dmesg}-2026-10-19.jpg`.
    - DSI/DECON (Linux 6.18+ has the 7870 DSIM)
    - postmarketOS device package
 5. ~~Framebuffer address~~ confirmed in section 12. ~~UART cable~~ not needed; the screen is the console.
+
+## 18e. M4c on hardware: USB network up, telnet login; dropbear flag bug (M4d)
+
+User test of M4c (2026-10-19), PC side:
+- `ip addr show enx02a517000002` → `inet 172.16.42.2/24` (DHCP lease from udhcpd)
+- `ping 172.16.42.1` → 3/3 received, ~2 ms
+- `telnet 172.16.42.1` → busybox root shell `~ #` (first interactive login)
+- On the phone: `uname -a` → `Linux a5y17lte 7.2.0+ #2 SMP PREEMPT … aarch64`,
+  8 CPUs in /proc/cpuinfo, `free -m` total 2539 MiB.
+- `ssh root@172.16.42.1` → Connection refused. `/tmp/dropbear.log`:
+  `Invalid option -E` + usage text. In dropbear 2026.94, `-E` exists only
+  when syslog support is compiled in; we build `--disable-syslog`, so it
+  already logs to stderr and rejects the flag. The default pidfile
+  `/var/run/dropbear.pid` also had no directory.
+
+M4d fix: drop `-E`, pass `-P /var/run/dropbear.pid`, add /var, /var/run,
+/var/log to the cpio and to init's mkdir. Image
+`out/a5y17lte-mainline-m4d-boot.img`, sha256
+`948ffa646e420ec70e943bbdd5cfde03a9f3c8c654cbd71b6713c8e2a9d7ccd9`.
