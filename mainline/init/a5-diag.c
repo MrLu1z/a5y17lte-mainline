@@ -11,6 +11,8 @@
  *   a5-diag muic    read the S2MU004 MUIC over /dev/i2c-N and, if the USB
  *                   D+/D- switch is not on USB, set manual mode + USB
  *   a5-diag usbregs DWC3 and USB PHY register dump, UDC state
+ *   a5-diag android W0: simpledrm KMS device, binderfs + a binder device
+ *                   (BINDER_VERSION), PSI - what Waydroid needs
  *   a5-diag keys    PID 1 loop: print key presses, hold Power 3 s ->
  *                   reboot into recovery (TWRP), reap orphaned children
  *
@@ -37,6 +39,11 @@
 #include <linux/i2c-dev.h>
 #include <linux/input.h>
 #include <linux/reboot.h>
+#include <linux/android/binder.h>
+#include <linux/android/binderfs.h>
+#include <drm/drm.h>
+#include <sys/mount.h>
+#include <sys/stat.h>
 
 #define DECON_BASE		0x14830000UL
 #define HW_SW_TRIG_CONTROL	0x70
@@ -477,6 +484,108 @@ static int cmd_keys(void)
 	}
 }
 
+/*
+ * W0 checks for Waydroid. Read-only towards the hardware: it only mounts
+ * binderfs (a pseudo filesystem) and asks binderfs for one device.
+ */
+static int cmd_android(void)
+{
+	struct drm_version v = { 0 };
+	struct binderfs_device bd = { 0 };
+	struct binder_version bv = { 0 };
+	char drv[32] = "", line[160], path[300];
+	int fd, ok = 1;
+	DIR *d;
+	struct dirent *e;
+
+	/* KMS: simpledrm on the boot framebuffer */
+	fd = open("/dev/dri/card0", O_RDWR);
+	if (fd >= 0) {
+		v.name = drv;
+		v.name_len = sizeof(drv) - 1;
+		if (ioctl(fd, DRM_IOCTL_VERSION, &v))
+			drv[0] = 0;
+		close(fd);
+	}
+	printf(" drm    : /dev/dri/card0 %s, driver %s\n",
+	       fd >= 0 ? "OK" : "MISSING", drv[0] ? drv : "?");
+	if (fd < 0)
+		ok = 0;
+	d = opendir("/sys/class/drm");
+	while (d && (e = readdir(d))) {
+		if (strncmp(e->d_name, "card0-", 6))
+			continue;
+		snprintf(path, sizeof(path), "/sys/class/drm/%s/status", e->d_name);
+		read_file(path, line, sizeof(line));
+		printf(" drm    : %s %s", e->d_name, line);
+		snprintf(path, sizeof(path), "/sys/class/drm/%s/modes", e->d_name);
+		read_file(path, line, sizeof(line));
+		printf(", modes %s\n", line[0] ? line : "none");
+	}
+	if (d)
+		closedir(d);
+
+	/* binder through binderfs, as Waydroid uses it */
+	mkdir("/dev/binderfs", 0755);
+	if (mount("binder", "/dev/binderfs", "binder", 0, NULL) && errno != EBUSY) {
+		printf(" binder : mount binderfs FAILED (%s)\n", strerror(errno));
+		return 1;
+	}
+	fd = open("/dev/binderfs/binder-control", O_RDWR);
+	if (fd < 0) {
+		printf(" binder : binder-control MISSING\n");
+		return 1;
+	}
+	strcpy(bd.name, "a5test");
+	if (ioctl(fd, BINDER_CTL_ADD, &bd) && errno != EEXIST)
+		printf(" binder : BINDER_CTL_ADD FAILED (%s)\n", strerror(errno));
+	close(fd);
+	fd = open("/dev/binderfs/a5test", O_RDWR | O_CLOEXEC);
+	if (fd < 0 || ioctl(fd, BINDER_VERSION, &bv)) {
+		printf(" binder : /dev/binderfs/a5test FAILED (%s)\n", strerror(errno));
+		ok = 0;
+	} else {
+		printf(" binder : binderfs OK, device %u:%u, protocol %d (want %d)\n",
+		       bd.major, bd.minor, bv.protocol_version,
+		       BINDER_CURRENT_PROTOCOL_VERSION);
+		if (bv.protocol_version != BINDER_CURRENT_PROTOCOL_VERSION)
+			ok = 0;
+	}
+	if (fd >= 0)
+		close(fd);
+
+	/* the static devices pmaports' waydroid category asks for */
+	for (int i = 0; i < 3; i++) {
+		static const char *const dev[] = { "binder", "hwbinder", "vndbinder" };
+
+		snprintf(path, sizeof(path), "/dev/binderfs/%s", dev[i]);
+		fd = open(path, O_RDWR | O_CLOEXEC);
+		if (fd < 0 || ioctl(fd, BINDER_VERSION, &bv)) {
+			printf(" binder : %s FAILED\n", path);
+			ok = 0;
+		} else {
+			printf(" binder : %s OK, protocol %d\n", path,
+			       bv.protocol_version);
+		}
+		if (fd >= 0)
+			close(fd);
+	}
+
+	/* PSI: Android's lmkd needs it */
+	read_file("/proc/pressure/memory", line, sizeof(line));
+	{
+		char *nl = strchr(line, '\n');
+
+		if (nl)
+			*nl = 0;
+	}
+	printf(" psi    : %s\n", line[0] ? line : "MISSING");
+	if (!line[0])
+		ok = 0;
+	printf(" w0     : %s\n", ok ? "PASS" : "FAIL");
+	return !ok;
+}
+
 int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -494,9 +603,11 @@ int main(int argc, char **argv)
 		return cmd_muic();
 	if (!strcmp(argv[1], "usbregs"))
 		return cmd_usbregs();
+	if (!strcmp(argv[1], "android"))
+		return cmd_android();
 	if (!strcmp(argv[1], "keys"))
 		return cmd_keys();
 usage:
-	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|keys\n");
+	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|android|keys\n");
 	return 2;
 }

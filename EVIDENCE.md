@@ -824,9 +824,99 @@ screen console and SSH work as in M4. Readings taken over SSH (read-only):
 All 8 CPUs online; MemTotal 2597040 kB (the extra built-in code costs about 5 MB against M2's 2602388 kB).
 
 
-## 21. Milestone 5b/5c: postmarketOS rootfs built and written to SYSTEM (2026-10-19)
+## 20. W0: Waydroid kernel options and simpledrm (built, not yet tested on the phone)
 
-(Section 20 is W0 on branch android-w0.)
+First milestone of the open-Android path (ANDROID-ROADMAP.md, branch
+android-roadmap). Branch `android-w0`, kept off `main` until it passes.
+
+**Kernel config** (`mainline/config/a5y17lte.config`, W0 blocks):
+- Binder: ANDROID_BINDER_IPC, ANDROID_BINDERFS, ANDROID_BINDER_DEVICES =
+  "binder,hwbinder,vndbinder". With binderfs on, v7.2 `binder_init()`
+  (drivers/android/binder.c:7134) creates no /dev/binder misc nodes; the three
+  devices appear inside every binderfs mount instead.
+- LXC: VETH (needs NET_CORE, which allnoconfig leaves off), CPUSETS, FUSE_FS.
+- waydroid-net.sh (waydroid/waydroid main): bridge `waydroid0`, NAT to the
+  host. It defaults to iptables, legacy binary first, with a mangle CHECKSUM
+  rule for DHCP replies; nftables only when LXC_USE_NFT=true. So: BRIDGE,
+  NETFILTER_XTABLES(_LEGACY), IP_NF_IPTABLES(_LEGACY), IP_NF_FILTER/NAT/MANGLE,
+  IP_NF_TARGET_MASQUERADE, NETFILTER_XT_NAT, XT_TARGET_MASQUERADE,
+  XT_TARGET_CHECKSUM, NFT_COMPAT (iptables-nft). In v7.2 every IP_NF_* table
+  depends on IP_NF_IPTABLES_LEGACY, which depends on NETFILTER_XTABLES_LEGACY.
+- Display: FB_SIMPLE replaced by DRM + DRM_SIMPLEDRM + DRM_FBDEV_EMULATION.
+  The same simple-framebuffer node (0x67000000, 1080x1920) becomes
+  /dev/dri/card0 for phoc and Waydroid; fbcon runs on DRM's fbdev client.
+  simpledrm only writes the buffer; the panel refresh still comes from
+  `a5-diag panel` (DECON HW_SW_TRIG_CONTROL = 0x10, sec. 15), unchanged.
+- **pmaports check (W0b).** Jimmy's copy of pmaports f3f92690
+  kconfigcheck.toml, category waydroid, showed what W0 lacked: static
+  devices binder/hwbinder/vndbinder, BLK_DEV_LOOP, SQUASHFS (+XATTR, XZ;
+  MISC_FILESYSTEMS), TUN, VLAN_8021Q, BRIDGE_VLAN_FILTERING,
+  CROSS_MEMORY_ATTACH, NETFILTER_XT_MATCH_COMMENT. All added, built in.
+  **One deliberate difference:** pmaports asks ANDROID_BINDERFS = n; we keep
+  y, because AOSP R and later requires binderfs (phase A), and Waydroid uses
+  binderfs when /dev/binder is absent. Everything else in the category is
+  satisfied (m accepted as y). BOOT partition = 33,554,432 B (TWRP,
+  `blockdev --getsize64`).
+
+**Checks so far** (Linux v7.2 8d3ae5928 + patches 0001-0007, clang 18):
+- `allnoconfig` + fragment: all 181 options applied, none overridden.
+- Image builds: 12,879,880 B on disk (M5a: 11.3 MiB), in memory 0xcb0000 =
+  13,303,808 B, so 0x48000000-0x48cb0000, still below the ramdisk at
+  0x4feff000. Raw Image sha256 b03c6287… (not the reproducible build; that
+  is build-mainline.sh on the PC).
+- DTB unchanged, W=1 clean.
+- `a5-diag android` compiles with -Wall -Werror (musl 1.2.5, v7.2 uapi).
+- W0 (first build) boot image on Jimmy's PC: 14,419,984 B, sha256
+  5be8bfa3…; kernel 12,879,880 B, the same size as here. Superseded by W0b
+  (not flashed).
+
+**`a5-diag android`** (called from /init after `a5-diag usb`): prints the
+driver behind /dev/dri/card0 (DRM_IOCTL_VERSION) and the connector modes,
+mounts binderfs at /dev/binderfs, creates device `a5test` through
+binder-control (BINDER_CTL_ADD), checks BINDER_VERSION, reads
+/proc/pressure/memory, then `w0 : PASS` or `FAIL`. No eMMC access.
+
+**Expected on the phone:**
+- Console text as before, now via simpledrm (dmesg: `[drm] Initialized
+  simpledrm`); no change in the TE refresh.
+- `drm : /dev/dri/card0 OK, driver simpledrm` and `card0-Unknown-1 connected,
+  modes 1080x1920` (connector name may differ).
+- `binder : binderfs OK, device N:M, protocol 8 (want 8)`, then
+  `/dev/binderfs/{binder,hwbinder,vndbinder} OK, protocol 8`, a `psi` line,
+  `w0 : PASS`.
+- Keys, USB networking, SSH unchanged.
+
+### 20a. Hardware result for W0b: W0 PASSED (2026-10-19 14:35)
+
+Jimmy flashed `a5y17lte-mainline-w0b-boot.img` (14,487,568 B, sha256
+`86ce1e4e…13b9aa`, built on his PC from 52661c4). Photos:
+`evidence/hw-mainline-w0b-{android,net}-2026-10-19.jpg`.
+
+| Reading | Meaning |
+|---|---|
+| Kernel log and console fully visible, refreshing | **simpledrm + fbdev emulation keep the command-mode panel working**: the TE refresh from `a5-diag panel` is unaffected (main W0 risk, sec. 20). |
+| `drm : /dev/dri/card0 OK, driver simpledrm`; `card0-Unknown-1 connected, modes 1080x1920` | KMS device for phoc/Waydroid on the boot framebuffer. |
+| `binder : binderfs OK, device 250:4, protocol 8 (want 8)` | binderfs mounts; BINDER_CTL_ADD and BINDER_VERSION work. |
+| `/dev/binderfs/{binder,hwbinder,vndbinder} OK, protocol 8` | The three default devices from ANDROID_BINDER_DEVICES appear in the mount (minors 1-3; the test device took 4). |
+| `psi : some avg10=0.00 … total=0` | PSI available for Android's lmkd. |
+| `w0 : PASS` | |
+| Boot log: `loop: module loaded`, `tun: Universal TUN/TAP device driver`, `8021q: 802.1Q VLAN Support` | The W0b options are built in. |
+| emmc `all READ-ONLY`; SYSTEM p19 ro=1; USB (UDC, NCM+ACM, MUIC switch, `udc : state configured`), `usb0 172.16.42.1` | M3-M5a behaviour unchanged. |
+| MemTotal 2,595,984 kB (M5a: 2,597,040 kB) | W0b's extra code costs about 1 MB. |
+
+Over SSH (new per-boot host key `SHA256:tLcqUhen…fYg`):
+- `dmesg`: `[drm] Initialized simpledrm 1.0.0 for 67000000.framebuffer on
+  minor 0` at 0.055 s, then `fb0: simpledrmdrmfb frame buffer device`.
+- `/dev/binderfs`: binder-control 250:0, binder 250:1, hwbinder 250:2,
+  vndbinder 250:3, a5test 250:4, plus `features/`.
+
+The banner says "W0" (the W0b build reused W0's init text).
+
+**Next:** W1, Waydroid headless on Nura, after M5d. It needs these W0 options in
+the kernel Nura boots, so `android-w0` merges into `main` once the Nura
+session has finished M5c/M5d.
+
+## 21. Milestone 5b/5c: postmarketOS rootfs built and written to SYSTEM (2026-10-19)
 
 **M5b.** `./build-pmos.sh` (pmaports f3f92690, pmbootstrap 7d23010; our
 `pmos/` device and kernel packages): `samsung-a5y17lte-root.img`, 686,817,280
