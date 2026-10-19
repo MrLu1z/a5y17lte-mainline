@@ -823,3 +823,54 @@ screen console and SSH work as in M4. Readings taken over SSH (read-only):
 
 All 8 CPUs online; MemTotal 2597040 kB (the extra built-in code costs about 5 MB against M2's 2602388 kB).
 
+
+## 20. W0: Waydroid kernel options and simpledrm (built, not yet tested on the phone)
+
+First milestone of the open-Android path (ANDROID-ROADMAP.md, branch
+android-roadmap). Branch `android-w0`, kept off `main` until it passes.
+
+**Kernel config** (`mainline/config/a5y17lte.config`, W0 blocks):
+- Binder through binderfs only: ANDROID_BINDER_IPC, ANDROID_BINDERFS,
+  ANDROID_BINDER_DEVICES="" (Waydroid mounts binderfs and creates its own).
+- LXC: VETH (needs NET_CORE, which allnoconfig leaves off), CPUSETS, FUSE_FS.
+- waydroid-net.sh (waydroid/waydroid main): bridge `waydroid0`, NAT to the
+  host. It defaults to iptables, legacy binary first, with a mangle CHECKSUM
+  rule for DHCP replies; nftables only when LXC_USE_NFT=true. So: BRIDGE,
+  NETFILTER_XTABLES(_LEGACY), IP_NF_IPTABLES(_LEGACY), IP_NF_FILTER/NAT/MANGLE,
+  IP_NF_TARGET_MASQUERADE, NETFILTER_XT_NAT, XT_TARGET_MASQUERADE,
+  XT_TARGET_CHECKSUM, NFT_COMPAT (iptables-nft). In v7.2 every IP_NF_* table
+  depends on IP_NF_IPTABLES_LEGACY, which depends on NETFILTER_XTABLES_LEGACY.
+- Display: FB_SIMPLE replaced by DRM + DRM_SIMPLEDRM + DRM_FBDEV_EMULATION.
+  The same simple-framebuffer node (0x67000000, 1080x1920) becomes
+  /dev/dri/card0 for phoc and Waydroid; fbcon runs on DRM's fbdev client.
+  simpledrm only writes the buffer; the panel refresh still comes from
+  `a5-diag panel` (DECON HW_SW_TRIG_CONTROL = 0x10, sec. 15), unchanged.
+- Not checked: pmaports' own `waydroid` kconfig category. gitlab.postmarketos.org
+  was unreachable from the build machine; run `pmbootstrap kconfig check`
+  on the PC before W1.
+
+**Checks so far** (Linux v7.2 8d3ae5928 + patches 0001-0007, clang 18):
+- `allnoconfig` + fragment: all 181 options applied, none overridden.
+- Image builds: 12,879,880 B on disk (M5a: 11.3 MiB), in memory 0xcb0000 =
+  13,303,808 B, so 0x48000000-0x48cb0000, still below the ramdisk at
+  0x4feff000. Raw Image sha256 b03c6287… (not the reproducible build; that
+  is build-mainline.sh on the PC).
+- DTB unchanged, W=1 clean.
+- `a5-diag android` compiles with -Wall -Werror (musl 1.2.5, v7.2 uapi).
+- The boot image grows by about 1.5 MB (M5a boot.img 13,414,416 B).
+  The BOOT partition size has not been recorded yet.
+
+**`a5-diag android`** (called from /init after `a5-diag usb`): prints the
+driver behind /dev/dri/card0 (DRM_IOCTL_VERSION) and the connector modes,
+mounts binderfs at /dev/binderfs, creates device `a5test` through
+binder-control (BINDER_CTL_ADD), checks BINDER_VERSION, reads
+/proc/pressure/memory, then `w0 : PASS` or `FAIL`. No eMMC access.
+
+**Expected on the phone:**
+- Console text as before, now via simpledrm (dmesg: `[drm] Initialized
+  simpledrm`); no change in the TE refresh.
+- `drm : /dev/dri/card0 OK, driver simpledrm` and `card0-Unknown-1 connected,
+  modes 1080x1920` (connector name may differ).
+- `binder : binderfs OK, device N:M, protocol 8 (want 8)`, a `psi` line,
+  `w0 : PASS`.
+- Keys, USB networking, SSH unchanged.
