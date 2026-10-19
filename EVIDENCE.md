@@ -767,3 +767,59 @@ read-only). `scp -O test.txt root@172.16.42.1:/tmp/` → 100%, 6 bytes;
 TWRP→mainline switch: 18d1:4ee2 (TWRP) disconnects, then 1d6b:0104
 "Galaxy A5 2017 (mainline Linux)", Mfr "a5y17lte mainline", serial
 "a5y17lte-m4", cdc_ncm usb0 → enx02a517000002, cdc_acm ttyACM0.
+
+## 19. Milestone 5a: distro kernel config, SYSTEM probe (PASSED on the phone 2026-10-19, see 19a)
+
+**Read-only lock correction.** Since M3, `a5-diag info` locked the eMMC with
+`BLKROSET` on `/dev/mmcblk0`. In v7.2 that only marks the whole-disk device:
+`blkdev_roset()` (`block/ioctl.c:530`) sets `BD_READ_ONLY` on the bdev it is
+called on, the mmc driver has no `set_read_only` hook, and
+`bdev_read_only()` (`include/linux/blkdev.h:833`) checks that bdev's flag or
+the disk's `GD_READ_ONLY`. So `mmcblk0p1..p25` were never read-only. Nothing
+wrote to them: no image mounted a filesystem and no partition was written over
+SSH. M5a also writes `/sys/block/mmcblk0/force_ro` = 1 (`set_disk_ro()`,
+`drivers/mmc/core/block.c:327`), which covers every partition, and checks
+each partition's `ro` attribute: `emmc : ..., all READ-ONLY`.
+
+**Kernel config** (`mainline/config/a5y17lte.config`, M5 block). Based on the
+pmaports `kconfigcheck.toml` (pmaports f3f92690) categories default, nftables
+and zram, all built in (still no modules), plus what a root filesystem needs:
+EXT4, INOTIFY_USER, FANOTIFY, AUTOFS, SYSVIPC, POSIX_MQUEUE, SECCOMP, cgroups,
+namespaces, dm-crypt, zram (needs `BLK_DEV`, which allnoconfig turns off) and
+nftables. Deferred: module compression (no modules), BTF/kprobes/ftrace/LSM,
+DRM fbdev emulation (no DRM driver yet), udmabuf, iptables-legacy.
+
+**SYSTEM probe.** `a5-diag system` finds the partition by GPT name
+(`PARTNAME=SYSTEM` in its uevent, no hard-coded number), prints its size and
+reads only the ext4 superblock (magic, label, filesystem size).
+
+**Checks so far:**
+- All 159 fragment options applied.
+- Kernel Image 11.3 MiB (in memory 11.7 MiB, 0x48000000-0x48bb0000), below
+  the ramdisk U-Boot places at 0x4feff000.
+- Emulated U-Boot with the FIT at 0x41000000 and at 0x5A000000: hashes OK,
+  `reached Linux entry 0x48000000`, FDT magic OK.
+- Builds are reproducible (same commit, clean trees: same image bytes).
+- Image `out/a5y17lte-mainline-m5a-boot.img`, sha256
+  `12cf73579ddff07bca2a16090314c3d6e7f4c87ad6ddd637d709925a82af93ce`.
+
+**Expected on the phone:** M4 behaviour unchanged (keys, USB network, SSH),
+plus `emmc : BJNB4R, 29820 MiB, 25 partitions, all READ-ONLY` and
+`system : mmcblk0pN, ... MiB, ro=1` with the ext4 superblock line.
+
+### 19a. Hardware result for M5a (2026-10-19)
+
+Jimmy flashed `a5y17lte-mainline-m5a-boot.img` (sha256 `12cf7357…`): the
+screen console and SSH work as in M4. Readings taken over SSH (read-only):
+
+| Reading | Meaning |
+|---|---|
+| `uname -v`: `#1 SMP PREEMPT Mon Oct 19 01:25:32 UTC 2026` | The reproducible build (epoch = commit 510ecc6) |
+| `emmc : BJNB4R, 29820 MiB, 25 partitions, all READ-ONLY`; `/sys/class/block/mmcblk0p*/ro` = 1 for all 25 | `force_ro` now covers every partition |
+| `system : mmcblk0p19, 9928704 sectors = 4848 MiB, ro=1` | SYSTEM is p19, 4848 MiB (5,083,496,448 bytes) |
+| `system : ext4, label "/", 4296 MiB filesystem` | Holds the LineageOS system image Sailfish uses; the filesystem is 552 MiB smaller than the partition |
+| EFS = `mmcblk0p3`, 40960 sectors (20 MiB); USERDATA = `mmcblk0p25`, 50110464 sectors | By GPT name, for the M5c backup |
+| `/proc/config.gz`: 697 options `=y` | The M5 config is running |
+
+All 8 CPUs online; MemTotal 2597040 kB (the extra built-in code costs about 5 MB against M2's 2602388 kB).
+

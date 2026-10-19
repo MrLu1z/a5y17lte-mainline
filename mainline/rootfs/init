@@ -1,5 +1,6 @@
 #!/bin/busybox sh
-# Galaxy A5 (2017) mainline test image - M4: USB networking.
+# Galaxy A5 (2017) mainline test image - M5a: distro kernel config, SYSTEM
+# partition probe (read-only). M4 services unchanged.
 # PID 1. Sets up the console, runs the hardware checks, brings up a USB
 # gadget (NCM network + ACM serial), then serves:
 #   ssh root@172.16.42.1        (dropbear, no password, USB cable only)
@@ -26,9 +27,10 @@ stty -echo -icanon 2>/dev/null
 
 echo
 echo "========================================="
-echo " Galaxy A5 (2017) - mainline Linux M4e"
+echo " Galaxy A5 (2017) - mainline Linux M5a"
 echo "========================================="
 a5-diag info
+a5-diag system
 a5-diag usb
 
 # USB device controller: if the PHY/DWC3 failed to probe because a clock was

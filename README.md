@@ -25,6 +25,7 @@ The repo name is historical. The earlier XNU/iOS investigation is closed, and th
 - **Milestone 4 (USB networking): passed on the phone (2026-10-19).** USB NCM + ACM gadget after switching the S2MU004 MUIC to USB; PC gets 172.16.42.2 by DHCP; `ssh root@172.16.42.1` (blank password) and telnet work. `scp -O` works with M4e (latest): `out/a5y17lte-mainline-m4e-boot.img`.
   - Phone at 172.16.42.1; `ssh root@172.16.42.1` (no password), `telnet 172.16.42.1`, or serial on `/dev/ttyACM0`.
   - eMMC still read-only. Hold Power for 3 s to reboot into TWRP.
+- **Milestone 5a (distro kernel config, SYSTEM probe): passed on the phone (2026-10-19).** Every eMMC partition is now really read-only (EVIDENCE 19). SYSTEM is mmcblk0p19, 4848 MiB. Latest image: `out/a5y17lte-mainline-m5a-boot.img`. Builds are reproducible.
 
 ## Mainline milestone 1: boot to a console on screen
 
