@@ -14,7 +14,7 @@ B="$ROOT/build"
 OUT="$ROOT/out"
 mkdir -p "$B/fit" "$OUT"
 JOBS="$(nproc)"
-IMG="a5y17lte-mainline-${MILESTONE:-m5a}-boot.img"
+IMG="a5y17lte-mainline-${MILESTONE:-m5d}-boot.img"
 
 # Reproducible: the same commit gives the same image bytes on any machine.
 # Time = last commit that changed a build input, so committing the image and

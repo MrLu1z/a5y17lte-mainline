@@ -1,8 +1,11 @@
 #!/bin/busybox sh
-# Galaxy A5 (2017) mainline test image - M5a: distro kernel config, SYSTEM
-# partition probe (read-only). M4 services unchanged.
-# PID 1. Sets up the console, runs the hardware checks, brings up a USB
-# gadget (NCM network + ACM serial), then serves:
+# Galaxy A5 (2017) mainline - M5d: boot Nura (postmarketOS) from SYSTEM.
+# PID 1. Sets up the console, runs the hardware checks (M5a, W0), brings up a
+# USB gadget (NCM network + ACM serial) with usb0 = 172.16.42.1, then boots
+# Nura: SYSTEM read-only (eMMC force_ro stays 1) under a RAM overlay, so
+# nothing is written to the eMMC and every change is gone at reboot.
+# Hold VOLUME DOWN during the 3 s prompt (or if Nura fails) to stay in this
+# rescue image instead, which serves:
 #   ssh root@172.16.42.1        (dropbear, no password, USB cable only)
 #   telnet 172.16.42.1          (fallback)
 #   /dev/ttyACM0 on the PC      (serial shell)
@@ -27,11 +30,12 @@ stty -echo -icanon 2>/dev/null
 
 echo
 echo "========================================="
-echo " Galaxy A5 (2017) - mainline Linux M5a"
+echo " Galaxy A5 (2017) - mainline Linux M5d"
 echo "========================================="
 a5-diag info
 a5-diag system
 a5-diag usb
+a5-diag android
 
 # USB device controller: if the PHY/DWC3 failed to probe because a clock was
 # off, a5-diag usb has just turned it on; bind the drivers again.
@@ -76,7 +80,59 @@ fi
 sleep 2
 a5-diag usbregs
 
+# Nura (postmarketOS) on SYSTEM: ext4 read-only + tmpfs overlay -> switch_root.
+# Returns only if something is missing; then the rescue services below start.
+boot_nura() {
+	local ue dev ro=/nura/ro rw=/nura/rw n=/newroot
+	ue=$(grep -l '^PARTNAME=SYSTEM$' /sys/class/block/mmcblk0p*/uevent 2>/dev/null)
+	ue=${ue%/uevent}
+	dev=/dev/${ue##*/}
+	[ -b "$dev" ] || { echo " nura   : no SYSTEM partition"; return; }
+	[ "$(cat /sys/block/mmcblk0/force_ro)" = 1 ] || { echo " nura   : eMMC not read-only, not booting"; return; }
+	mkdir -p $ro $rw $n
+	mount -t ext4 -o ro,noload "$dev" $ro || { echo " nura   : mounting $dev failed"; return; }
+	if [ ! -x $ro/sbin/init ] || ! grep -q '^ID=' $ro/usr/lib/os-release 2>/dev/null; then
+		echo " nura   : $dev has no /sbin/init or os-release"; umount $ro; return
+	fi
+	echo " nura   : $dev $(grep '^PRETTY_NAME=' $ro/usr/lib/os-release), read-only"
+	mount -t tmpfs -o mode=0755,size=50% overlay-rw $rw
+	mkdir -p $rw/upper $rw/work
+	if ! mount -t overlay overlay -o lowerdir=$ro,upperdir=$rw/upper,workdir=$rw/work $n; then
+		echo " nura   : overlay failed"; umount $rw $ro; return
+	fi
+	# M5d settings, in the RAM layer only: our usb0 address stays (not NM's),
+	# and unudhcpd answers as 172.16.42.1 (its OpenRC default is 172.16.41.1)
+	mkdir -p $n/etc/NetworkManager/conf.d $n/etc/conf.d
+	printf '[keyfile]\nunmanaged-devices=interface-name:usb0\n' \
+		> $n/etc/NetworkManager/conf.d/90-a5y17lte-usb0.conf
+	echo 'UNUDHCPD_SERVER="172.16.42.1"' > $n/etc/conf.d/unudhcpd.usb0
+	# keep both layers visible in Nura, for inspection
+	mkdir -p $n/mnt/system-ro $n/mnt/overlay-rw
+	mount --move $ro $n/mnt/system-ro
+	mount --move $rw $n/mnt/overlay-rw
+	umount /tmp
+	mount --move /dev $n/dev	# with /dev/pts
+	mount --move /proc $n/proc
+	mount --move /sys $n/sys	# with configfs (the gadget) and debugfs
+	echo " nura   : switch_root -> /sbin/init (OpenRC)"
+	exec switch_root $n /sbin/init
+}
+
 if ifconfig usb0 172.16.42.1 netmask 255.255.255.0 up 2>/dev/null; then
+	echo " net    : usb0 172.16.42.1"
+else
+	echo " net    : usb0 missing"
+fi
+echo
+echo " Hold VOLUME DOWN now to stay in the rescue image..."
+if a5-diag held 3000; then
+	echo " rescue : Volume Down held"
+else
+	boot_nura
+	echo " rescue : Nura did not start"
+fi
+
+if ifconfig usb0 2>/dev/null | grep -q 'inet addr:172.16.42.1'; then
 	touch /tmp/udhcpd.leases
 	udhcpd /etc/udhcpd.conf
 	dropbear -R -B -p 22 -P /var/run/dropbear.pid 2>/tmp/dropbear.log

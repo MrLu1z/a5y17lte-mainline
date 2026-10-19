@@ -823,3 +823,179 @@ screen console and SSH work as in M4. Readings taken over SSH (read-only):
 
 All 8 CPUs online; MemTotal 2597040 kB (the extra built-in code costs about 5 MB against M2's 2602388 kB).
 
+
+## 20. W0: Waydroid kernel options and simpledrm (built, not yet tested on the phone)
+
+First milestone of the open-Android path (ANDROID-ROADMAP.md, branch
+android-roadmap). Branch `android-w0`, kept off `main` until it passes.
+
+**Kernel config** (`mainline/config/a5y17lte.config`, W0 blocks):
+- Binder: ANDROID_BINDER_IPC, ANDROID_BINDERFS, ANDROID_BINDER_DEVICES =
+  "binder,hwbinder,vndbinder". With binderfs on, v7.2 `binder_init()`
+  (drivers/android/binder.c:7134) creates no /dev/binder misc nodes; the three
+  devices appear inside every binderfs mount instead.
+- LXC: VETH (needs NET_CORE, which allnoconfig leaves off), CPUSETS, FUSE_FS.
+- waydroid-net.sh (waydroid/waydroid main): bridge `waydroid0`, NAT to the
+  host. It defaults to iptables, legacy binary first, with a mangle CHECKSUM
+  rule for DHCP replies; nftables only when LXC_USE_NFT=true. So: BRIDGE,
+  NETFILTER_XTABLES(_LEGACY), IP_NF_IPTABLES(_LEGACY), IP_NF_FILTER/NAT/MANGLE,
+  IP_NF_TARGET_MASQUERADE, NETFILTER_XT_NAT, XT_TARGET_MASQUERADE,
+  XT_TARGET_CHECKSUM, NFT_COMPAT (iptables-nft). In v7.2 every IP_NF_* table
+  depends on IP_NF_IPTABLES_LEGACY, which depends on NETFILTER_XTABLES_LEGACY.
+- Display: FB_SIMPLE replaced by DRM + DRM_SIMPLEDRM + DRM_FBDEV_EMULATION.
+  The same simple-framebuffer node (0x67000000, 1080x1920) becomes
+  /dev/dri/card0 for phoc and Waydroid; fbcon runs on DRM's fbdev client.
+  simpledrm only writes the buffer; the panel refresh still comes from
+  `a5-diag panel` (DECON HW_SW_TRIG_CONTROL = 0x10, sec. 15), unchanged.
+- **pmaports check (W0b).** Jimmy's copy of pmaports f3f92690
+  kconfigcheck.toml, category waydroid, showed what W0 lacked: static
+  devices binder/hwbinder/vndbinder, BLK_DEV_LOOP, SQUASHFS (+XATTR, XZ;
+  MISC_FILESYSTEMS), TUN, VLAN_8021Q, BRIDGE_VLAN_FILTERING,
+  CROSS_MEMORY_ATTACH, NETFILTER_XT_MATCH_COMMENT. All added, built in.
+  **One deliberate difference:** pmaports asks ANDROID_BINDERFS = n; we keep
+  y, because AOSP R and later requires binderfs (phase A), and Waydroid uses
+  binderfs when /dev/binder is absent. Everything else in the category is
+  satisfied (m accepted as y). BOOT partition = 33,554,432 B (TWRP,
+  `blockdev --getsize64`).
+
+**Checks so far** (Linux v7.2 8d3ae5928 + patches 0001-0007, clang 18):
+- `allnoconfig` + fragment: all 181 options applied, none overridden.
+- Image builds: 12,879,880 B on disk (M5a: 11.3 MiB), in memory 0xcb0000 =
+  13,303,808 B, so 0x48000000-0x48cb0000, still below the ramdisk at
+  0x4feff000. Raw Image sha256 b03c6287… (not the reproducible build; that
+  is build-mainline.sh on the PC).
+- DTB unchanged, W=1 clean.
+- `a5-diag android` compiles with -Wall -Werror (musl 1.2.5, v7.2 uapi).
+- W0 (first build) boot image on Jimmy's PC: 14,419,984 B, sha256
+  5be8bfa3…; kernel 12,879,880 B, the same size as here. Superseded by W0b
+  (not flashed).
+
+**`a5-diag android`** (called from /init after `a5-diag usb`): prints the
+driver behind /dev/dri/card0 (DRM_IOCTL_VERSION) and the connector modes,
+mounts binderfs at /dev/binderfs, creates device `a5test` through
+binder-control (BINDER_CTL_ADD), checks BINDER_VERSION, reads
+/proc/pressure/memory, then `w0 : PASS` or `FAIL`. No eMMC access.
+
+**Expected on the phone:**
+- Console text as before, now via simpledrm (dmesg: `[drm] Initialized
+  simpledrm`); no change in the TE refresh.
+- `drm : /dev/dri/card0 OK, driver simpledrm` and `card0-Unknown-1 connected,
+  modes 1080x1920` (connector name may differ).
+- `binder : binderfs OK, device N:M, protocol 8 (want 8)`, then
+  `/dev/binderfs/{binder,hwbinder,vndbinder} OK, protocol 8`, a `psi` line,
+  `w0 : PASS`.
+- Keys, USB networking, SSH unchanged.
+
+### 20a. Hardware result for W0b: W0 PASSED (2026-10-19 14:35)
+
+Jimmy flashed `a5y17lte-mainline-w0b-boot.img` (14,487,568 B, sha256
+`86ce1e4e…13b9aa`, built on his PC from 52661c4). Photos:
+`evidence/hw-mainline-w0b-{android,net}-2026-10-19.jpg`.
+
+| Reading | Meaning |
+|---|---|
+| Kernel log and console fully visible, refreshing | **simpledrm + fbdev emulation keep the command-mode panel working**: the TE refresh from `a5-diag panel` is unaffected (main W0 risk, sec. 20). |
+| `drm : /dev/dri/card0 OK, driver simpledrm`; `card0-Unknown-1 connected, modes 1080x1920` | KMS device for phoc/Waydroid on the boot framebuffer. |
+| `binder : binderfs OK, device 250:4, protocol 8 (want 8)` | binderfs mounts; BINDER_CTL_ADD and BINDER_VERSION work. |
+| `/dev/binderfs/{binder,hwbinder,vndbinder} OK, protocol 8` | The three default devices from ANDROID_BINDER_DEVICES appear in the mount (minors 1-3; the test device took 4). |
+| `psi : some avg10=0.00 … total=0` | PSI available for Android's lmkd. |
+| `w0 : PASS` | |
+| Boot log: `loop: module loaded`, `tun: Universal TUN/TAP device driver`, `8021q: 802.1Q VLAN Support` | The W0b options are built in. |
+| emmc `all READ-ONLY`; SYSTEM p19 ro=1; USB (UDC, NCM+ACM, MUIC switch, `udc : state configured`), `usb0 172.16.42.1` | M3-M5a behaviour unchanged. |
+| MemTotal 2,595,984 kB (M5a: 2,597,040 kB) | W0b's extra code costs about 1 MB. |
+
+Over SSH (new per-boot host key `SHA256:tLcqUhen…fYg`):
+- `dmesg`: `[drm] Initialized simpledrm 1.0.0 for 67000000.framebuffer on
+  minor 0` at 0.055 s, then `fb0: simpledrmdrmfb frame buffer device`.
+- `/dev/binderfs`: binder-control 250:0, binder 250:1, hwbinder 250:2,
+  vndbinder 250:3, a5test 250:4, plus `features/`.
+
+The banner says "W0" (the W0b build reused W0's init text).
+
+**Next:** W1, Waydroid headless on Nura, after M5d. It needs these W0 options in
+the kernel Nura boots, so `android-w0` merges into `main` once the Nura
+session has finished M5c/M5d.
+
+## 21. Milestone 5b/5c: postmarketOS rootfs built and written to SYSTEM (2026-10-19)
+
+**M5b.** `./build-pmos.sh` (pmaports f3f92690, pmbootstrap 7d23010; our
+`pmos/` device and kernel packages): `samsung-a5y17lte-root.img`, 686,817,280
+bytes, sha256 `06e88091addeafbb295de4d6dd45428f14e46cc49676d10bc2b2cbf2c63b676b`.
+ext4 `pmOS_root` (features include `metadata_csum`, `64bit`, `orphan_file`),
+e2fsck 1.47 clean. OpenRC (pinned: the console UI now defaults to systemd),
+inittab getty on ttyGS0; runlevels have `sshd`, `unudhcpd.usb0`, `nftables`,
+`chronyd`. `/usr/lib/os-release`: `PRETTY_NAME="Nura edge"`. pmbootstrap's
+`/etc/fstab` had a `/boot` line for a pmOS_boot partition this phone doesn't
+have, and was owned by the build user (1000:1000); build-pmos.sh drops the
+line and makes the file 0:0. The `/` line keeps `defaults`, so OpenRC would
+remount root read-write.
+
+**M5c steps 1-2 (TWRP, read-only).** TWRP's by-name links
+(`/dev/block/platform/13540000.dwmmc0/by-name`) map EFS → mmcblk0p3 (20,971,520 B)
+and SYSTEM → mmcblk0p19 (5,083,496,448 B), the same as mainline (19a).
+Backups in `~/a5-backup` (not in git): EFS `5efb6122…`, SYSTEM `17530cf1…`;
+phone and PC hashes match, and e2fsck -fn on the SYSTEM copy is clean.
+
+**Before step 3 (re-check).** EFS had changed to `5f6cfe57…`: mount count
+333 → 337, plus the superblock, journal and the contents of `nv_data.bin` and
+`nv_data.bin.md5`. Those are the modem's NV data, which only an OS with the
+modem stack writes (not TWRP, not our images), so presumably Sailfish booted
+after 04:35. A second backup, `EFS-p3-20261019-1440.img`, was saved. SYSTEM
+had also changed (`fd8b3f19…`), but only in mount metadata: mount count
+71 → 79, last mounted on `/system_root`, with free blocks/inodes and lifetime
+writes unchanged. **TWRP mounts SYSTEM (`/system_root`) and EFS at startup**;
+it did so 3 s before the first backup too. So the SYSTEM backup is still a
+valid rollback.
+
+**M5c step 3: the first eMMC write (Jimmy's OK).** `adb push` to TWRP's tmpfs
+`/tmp` (18.3 MB/s), sha256 on the phone `06e88091…`, then
+`dd if=/tmp/root.img of=/dev/block/platform/13540000.dwmmc0/by-name/SYSTEM bs=4M && sync`:
+686,817,280 bytes, exit 0.
+- After `blockdev --flushbufs` + `drop_caches`, `head -c 686817280` of SYSTEM
+  gives sha256 `06e88091…`, the same as root.img.
+- TWRP's e2fsck 1.43.3 can't check it: `unsupported feature(s): FEATURE_C12`
+  (orphan_file, e2fsprogs 1.47). A read-back checked with e2fsck 1.47.0 on the
+  PC is clean: `pmOS_root: 6751/83904 files, 134672/167680 blocks`.
+- EFS is unchanged by the write (`5f6cfe57…`).
+- The rest of SYSTEM (after the 655 MiB image) still holds old data;
+  `resize2fs` in M5e grows the filesystem over it.
+
+## 22. Milestone 5d: boot Nura from SYSTEM, read-only under a RAM overlay (built 2026-10-19, not yet tested on the phone)
+
+Includes W0 (merged, section 20). After the M5a/W0 checks, the gadget, the
+MUIC switch and `usb0 = 172.16.42.1`, `/init` waits 3 s for Volume Down
+(`a5-diag held 3000`, key state via `EVIOCGKEY`). Without it, `/init` does this:
+- **Find and mount SYSTEM.** It finds the partition by GPT name, refuses to
+  continue unless `/sys/block/mmcblk0/force_ro` is 1, and mounts it ext4
+  `ro,noload`. It requires `/sbin/init` and `/usr/lib/os-release` there.
+- **Overlay.** It puts a tmpfs (size 50% of RAM) overlay on top
+  (`CONFIG_OVERLAY_FS`). Writes in Nura go to RAM only and are lost at reboot.
+- **RAM-layer settings.** It writes two files into the RAM layer:
+  `/etc/NetworkManager/conf.d/90-a5y17lte-usb0.conf` (usb0 unmanaged, so our
+  address stays) and `/etc/conf.d/unudhcpd.usb0` (`UNUDHCPD_SERVER=172.16.42.1`;
+  the OpenRC script's default is 172.16.41.1, unudhcpd 0.5.0).
+- **Hand-off.** It moves the layers to `/mnt/system-ro` and `/mnt/overlay-rw`,
+  moves /dev, /proc and /sys (configfs with the gadget comes along), and runs
+  `switch_root /newroot /sbin/init` (busybox init + OpenRC). Nura's own getty
+  on ttyGS0 and sshd take over from our dropbear and serial shell.
+
+If any step fails, or Volume Down is held, the rescue services start as in
+M4/W0 (dropbear root, telnet, udhcpd, serial shell, hold Power -> TWRP).
+
+**Checks so far:**
+- All fragment options applied (OVERLAY_FS, DRM_SIMPLEDRM, ANDROID_BINDERFS, ...).
+- `/init` passes `dash -n` and `bash -n`. Not run anywhere yet: the
+  host can't run aarch64 binaries (binfmt points to a missing
+  qemu-aarch64-static) and `tools/uemu.py` lacks `openat`.
+- Kernel 12.9 MiB in memory (ends 0x48ce0000), below the ramdisk at 0x4feff000.
+- Emulated U-Boot with the FIT at 0x41000000 and 0x5A000000: hashes OK,
+  `reached Linux entry 0x48000000`.
+- Image `out/a5y17lte-mainline-m5d-boot.img`, 14622736 bytes, sha256
+  `7ab5ddd7b9be221693293c6f3758b059474ee7be6dd51ca69b5f12b6022be3a3`.
+
+**Expected on the phone:**
+- `nura : /dev/mmcblk0p19 PRETTY_NAME="Nura edge", read-only`, then
+  `switch_root`, then OpenRC, then a login prompt on tty1.
+- PC: DHCP 172.16.42.2 from unudhcpd; `ssh user@172.16.42.1` (key login;
+  the host key is new on every boot); a getty on /dev/ttyACM0.
+- In Nura, `cat /sys/block/mmcblk0/force_ro` gives 1 and `findmnt /` shows overlay.
