@@ -1136,3 +1136,18 @@ prints every step (device, ioctl, value, errno); init saves it to
 writable in the rw boot; no flag can avoid that while one partition is
 writable. The other 24 partitions are read-only; mmcblk0boot0/1 keep their own
 force_ro = 1.
+
+### 24b. M5e step 3: write/reboot test PASSED (2026-10-19)
+
+Image `out/a5y17lte-mainline-m5e-boot.img` (sha256 `e38f49cd…`, commit 66ba460).
+- **Write test.** A 50 MB file written in Nura (read-write SYSTEM) has sha256
+  `7558406d…f3b8` and was still intact after a hard reboot.
+- **Reboot bug.** `sudo reboot` in Nura hangs on the Samsung logo; the reboot
+  had to be forced through recovery. Not diagnosed yet (no reset/poweroff
+  driver for the 7880 in our tree is the likely area; unverified).
+- **Filesystem.** SYSTEM pulled to the PC: `e2fsck -fn` reports only the
+  orphan_file flag (expected with -n); `e2fsck -fy` confirms clean, zero real
+  errors.
+- **EFS.** Now `a65f32b894a23b331cb990a4b76c5b715e8542f9e522ec3ca023a40d0f4b2378`,
+  changed again. Cause: TWRP automounts EFS, not Nura (Nura keeps it read-only).
+- Not started: resize2fs, apk via PC NAT.

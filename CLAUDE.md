@@ -45,10 +45,17 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
 - Rollback: `adb exec-in "dd of=<by-name>/SYSTEM bs=4M" < ~/a5-backup/SYSTEM-p19.img`
   (5 GB, won't fit in TWRP /tmp), then check for sha256 17530cf1….
 - android-w0 merged into main (d3b6283).
-- M5d BUILT (EVIDENCE 22), phone test next: out/a5y17lte-mainline-m5d-boot.img,
-  sha256 7ab5ddd7…. Boots Nura from SYSTEM ro (force_ro=1) under a tmpfs
-  overlay, so no eMMC writes; hold Volume Down at the 3 s prompt -> rescue image.
-- Then M5e: read-write root, resize2fs, apk via PC NAT (needs Jimmy's OK).
+- M5d PASSED (EVIDENCE 22a): Nura boots from SYSTEM read-only under a tmpfs overlay.
+- M5e PASSED on the phone (EVIDENCE 24, 24b): out/a5y17lte-mainline-m5e-boot.img,
+  sha256 e38f49cd… (commit 66ba460 fixed lock-except). Nura runs read-write on
+  SYSTEM (mmcblk0p19) only; the other 24 partitions stay read-only, but the raw
+  /dev/mmcblk0 node is writable then (no flag can avoid that). A 50 MB file
+  (sha256 7558406d…f3b8) survived a hard reboot; SYSTEM pulled to the PC:
+  e2fsck -fy clean. Known bug: `sudo reboot` in Nura hangs on the Samsung logo
+  (recovery forces a reboot). TWRP automounts EFS, so its hash changes (now
+  a65f32b8…) without Nura touching it.
+- NEXT (not started): resize2fs of SYSTEM (needs Jimmy's OK), apk via PC NAT,
+  fix the reboot hang.
 
 ## Roadmap after M5 (Jimmy, 2026-10-19)
 Two OSes on ONE mainline kernel + DT: Nura/postmarketOS (primary, on SYSTEM)
