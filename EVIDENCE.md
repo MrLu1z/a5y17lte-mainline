@@ -1203,3 +1203,29 @@ Binary `build/ext4-grow-aarch64` (sha256 `55d8e7c1…`), run in Nura as root:
   flag this time. 6802/532608 files, 176027/1241088 blocks used.
 - M5e steps 1-4 are all done: boot image with the lock fix (EVIDENCE 24, 24b),
   write/reboot test, online grow (25, 25a), reboot and fsck (25b).
+
+## 26. M5e step 5: internet through PC NAT, `apk update` works (PASSED 2026-10-20)
+
+**PC side** (runtime only, gone at PC reboot): `ip_forward` = 1; iptables
+MASQUERADE for 172.16.42.0/24 out `wlp2s0`; two ACCEPT rules in `DOCKER-USER`
+for `enx02a517000002` ↔ `wlp2s0` (Docker's `FORWARD` policy is DROP, so
+MASQUERADE alone is not enough).
+
+**Phone side** (RAM only, repeat after every boot):
+- Default route `via 172.16.42.2 dev usb0`.
+- DNS: a resolv.conf with `nameserver 1.1.1.1` bind-mounted over
+  `/etc/resolv.conf`; this got round the conflict with the systemd-resolved
+  stub resolv.conf that Jimmy reported.
+- Clock set by hand (`date -u -s`): Nura has no RTC and the forced power-off
+  never saves the time, so it must be set after each boot before TLS works.
+- `a5-diag` is not in Nura (only in the init and rescue image); the MUIC was
+  already on USB from the boot, so nothing was needed there.
+
+**Results.** `ping 172.16.42.2` OK, `ping 1.1.1.1` OK, `nslookup
+dl-cdn.alpinelinux.org` OK, `sudo apk update` OK: `37182 distinct packages
+available`. The apk index cache under `/var/cache/apk` is the only write to
+SYSTEM so far; no package was installed.
+
+**Not made persistent yet:** route, DNS and clock live in RAM; the PC rules are
+lost at PC reboot. Making them permanent belongs in the device package (an
+OpenRC script), through a rootfs rebuild.

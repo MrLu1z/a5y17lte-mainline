@@ -67,7 +67,15 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   (ioctl on the mount point; static binary build/ext4-grow-aarch64, not in git).
 - Known bug: `sudo reboot` in Nura hangs on the Samsung logo (repeatable);
   workaround: Volume Down + Power to force off, then power on.
-- NEXT (not started): apk via PC NAT (needs Jimmy's OK), fix the reboot hang.
+- M5e step 5 PASSED (EVIDENCE 26): internet via PC NAT. PC: ip_forward, iptables
+  MASQUERADE 172.16.42.0/24 -> wlp2s0 plus DOCKER-USER ACCEPTs for
+  enx02a517000002 (Docker's FORWARD is DROP). Phone, RAM only, redo each boot:
+  `ip route add default via 172.16.42.2 dev usb0`, a resolv.conf with
+  nameserver 1.1.1.1 bind-mounted over /etc/resolv.conf (systemd-resolved stub
+  conflict), clock via `date -u -s` (no RTC). `apk update` OK, 37182 packages.
+  M5e (all 5 steps) is COMPLETE.
+- NEXT (not started): make route/DNS/clock persistent in the device package;
+  fix the reboot hang; then touchscreen -> Phosh (roadmap below).
 
 ## Roadmap after M5 (Jimmy, 2026-10-19)
 Two OSes on ONE mainline kernel + DT: Nura/postmarketOS (primary, on SYSTEM)
