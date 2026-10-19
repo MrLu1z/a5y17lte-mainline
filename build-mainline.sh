@@ -42,7 +42,7 @@ grep -q exynos7880-a5y17lte "$LINUX/arch/arm64/boot/dts/exynos/Makefile" || \
 		"$LINUX/arch/arm64/boot/dts/exynos/Makefile"
 KM=(make -C "$LINUX" ARCH=arm64 LLVM=1)
 KCONFIG_ALLCONFIG="$ML/config/a5y17lte.config" "${KM[@]}" allnoconfig >/dev/null
-"${KM[@]}" -j"$JOBS" Image exynos/exynos7880-a5y17lte.dtb headers usr/gen_init_cpio >/dev/null
+"${KM[@]}" -j"$JOBS" Image exynos/exynos7880-a5y17lte.dtb headers usr_gen_init_cpio >/dev/null
 cp "$LINUX/arch/arm64/boot/Image" "$LINUX/arch/arm64/boot/dts/exynos/exynos7880-a5y17lte.dtb" "$B/fit/"
 
 echo "== userspace (busybox, dropbear, a5-diag) + initramfs"
