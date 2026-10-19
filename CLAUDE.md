@@ -45,6 +45,22 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
 - Then M5d: init mounts SYSTEM read-only and switch_roots. Keep force_ro=1 there:
   the fstab `/` line says `defaults`, so OpenRC would remount root read-write.
 
+## Roadmap after M5 (Jimmy, 2026-10-19)
+Two OSes on ONE mainline kernel + DT: Nura/postmarketOS (primary, on SYSTEM)
+and, later, open-source Android (AOSP) — no Samsung vendor blobs, which only
+work with Samsung's 3.18 kernel.
+- Shared kernel milestones, in order: touchscreen → Phosh on Nura; real 7880
+  CMU clock driver; display (DECON/DSI, mandatory for Android's
+  drm_hwcomposer); GPU (Mali-T830 via Panfrost, after G3D power domain, clock
+  and vdd_g3d — MrLu1z's gpu-test branch has the node values but does not
+  build and lacks power-domain/clock/regulator); battery, audio, Wi-Fi.
+- Then binder/Android kernel options → Waydroid on Nura (first Android apps).
+- Then a GloDroid-style AOSP device for a5y17lte (Mesa/Panfrost,
+  drm_hwcomposer, minigbm) on the same kernel, on a partition/SD card that
+  does not replace Nura on SYSTEM.
+- Known limits for both OSes: no modem (Shannon, no mainline driver → no
+  calls/SMS/data) and no camera, for now.
+
 ## Rules
 - Test images keep the eMMC read-only (/sys/block/mmcblk0/force_ro = 1;
   BLKROSET alone never covered the partitions, EVIDENCE 19). Any eMMC write
