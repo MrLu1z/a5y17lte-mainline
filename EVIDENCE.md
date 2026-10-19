@@ -589,6 +589,34 @@ They were smoke-tested in a Unicorn user-mode runner (`tools/uemu.py`): musl lon
 - The initramfs contains busybox, dropbear and a5-diag.
 - The emulated U-Boot path reaches the Linux entry with a 12 KB FDT.
 
+### 18a. Hardware result for M4 (2026-10-19 03:05)
+
+Photo: `evidence/hw-mainline-m4-usbclk-2026-10-19.jpg`.
+
+**USB clocks as S-Boot left them:**
+
+| Register | Value | Meaning |
+|---|---|---|
+| CCORE FSYS_BUS | mux `0x00200000`, div `0x2`, en `0x1` | BUS_PLL/2 ÷ 3 = **266.5 MHz**; the DT fixed clock is now 266500000 |
+| CCORE USB20DRD | mux `0x00200000`, div `0xf`, en `0x1` | BUS_PLL/2 ÷ 16 = **49.969 MHz**, matching the DT value |
+| FSYS USB_PLL_CON0 | `0xa1900d04` | M 400, P 13, S 4, enabled + locked = **50.000 MHz**: **S-Boot leaves the USB PLL on**, at exactly Samsung's rate |
+| FSYS mux_usb_pll / phyclk_user | `0x00201000` / `0x00201000` | Gate (bit 21) and select (bit 12) set by the 7870 CMU driver's critical gates |
+| FSYS en_bus | `0x07ffffff` | All bus gates on |
+| FSYS en_ref | `0x00000001` | Reference gate on |
+| PMU USBDEV_PHY_CONTROL | `0x00000002` | PHY enable bit set (not isolated) |
+
+**Bug in /init:**
+
+- `busybox --install -s` failed for every `/usr/bin` and `/usr/sbin` applet because those directories did not exist. That left no `head`, `udhcpd`, `telnetd` or `setsid`.
+- `UDC=$(ls /sys/class/udc | head -1)` therefore came out empty: `/init: line 41: head: not found`, then `UDC = NONE`, then `usb0 missing`.
+- The re-bind branch did **not** run, so `/sys/class/udc` was **not** empty: **the DWC3 controller probed.**
+
+**Fix (M4b):**
+
+- `/usr/bin` and `/usr/sbin` are added to the initramfs and created before `--install`.
+- `head` is no longer needed.
+- The FSYS_BUS rate is set to the measured value.
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).

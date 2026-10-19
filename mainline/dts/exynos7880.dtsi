@@ -141,13 +141,13 @@
 	 * ([P] CCORE_GATE_CLKCMU_FSYS_BUS / _USB20DRD_REFCLK), which has no
 	 * Linux driver yet. The Exynos7870 CMU_FSYS driver looks its parents up
 	 * by the CMU_MIF clock names, hence these output names. S-Boot leaves
-	 * them running; the M4 init prints the real CCORE mux/div values.
-	 * Rates are placeholders (BUS_PLL/2/4 and /16) until measured.
+	 * them running. Rates measured on the phone (EVIDENCE.md 18a):
+	 * FSYS_BUS = BUS_PLL/2 / 3 = 266.5 MHz, USB20DRD = BUS_PLL/2 / 16.
 	 */
 	clk_ccore_fsys_bus: clock-ccore-fsys-bus {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <199875000>;
+		clock-frequency = <266500000>;
 		clock-output-names = "gout_mif_cmu_fsys_bus";
 	};
 

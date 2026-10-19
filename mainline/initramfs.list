@@ -10,6 +10,9 @@ dir /tmp 1777 0 0
 dir /root 0700 0 0
 dir /bin 0755 0 0
 dir /sbin 0755 0 0
+dir /usr 0755 0 0
+dir /usr/bin 0755 0 0
+dir /usr/sbin 0755 0 0
 dir /etc 0755 0 0
 dir /etc/dropbear 0700 0 0
 file /init mainline/rootfs/init 0755 0 0

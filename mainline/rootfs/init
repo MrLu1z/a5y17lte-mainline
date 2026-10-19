@@ -6,8 +6,9 @@
 #   telnet 172.16.42.1          (fallback)
 #   /dev/ttyACM0 on the PC      (serial shell)
 # and finally becomes the key loop (hold Power 3 s -> TWRP).
+/bin/busybox mkdir -p /usr/bin /usr/sbin
 /bin/busybox --install -s
-export PATH=/bin:/sbin
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
@@ -25,7 +26,7 @@ stty -echo -icanon 2>/dev/null
 
 echo
 echo "========================================="
-echo " Galaxy A5 (2017) - mainline Linux M4"
+echo " Galaxy A5 (2017) - mainline Linux M4b"
 echo "========================================="
 a5-diag info
 a5-diag usb
@@ -38,7 +39,8 @@ if [ -z "$(ls /sys/class/udc 2>/dev/null)" ]; then
 	echo 13600000.usb > /sys/bus/platform/drivers/exynos-dwc3/bind 2>/dev/null
 	sleep 1
 fi
-UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
+UDC=$(ls /sys/class/udc 2>/dev/null)
+UDC=${UDC%%[[:space:]]*}
 echo " usb    : UDC = ${UDC:-NONE}"
 
 G=/sys/kernel/config/usb_gadget/a5
