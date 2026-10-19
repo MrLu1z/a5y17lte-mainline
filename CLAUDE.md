@@ -9,7 +9,9 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
 - Passed on the phone: M1 console on screen, M2 keys, M3 eMMC read-only,
   M4 USB networking (NCM+ACM; phone 172.16.42.1, PC gets 172.16.42.2 by DHCP;
   `ssh root@172.16.42.1`, blank password; `scp -O` works; telnet on 23).
-- Latest image: out/a5y17lte-mainline-m4e-boot.img (built by build-mainline.sh).
+- M5a passed: distro kernel config, all partitions read-only (force_ro), SYSTEM = mmcblk0p19 (4848 MiB).
+- Latest image: out/a5y17lte-mainline-m5a-boot.img (built by build-mainline.sh,
+  reproducible: same commit -> same bytes).
 - The MUIC (S2MU004, i2c-gpio on gpc1-0/1, addr 0x3d) must be switched to USB
   by `a5-diag muic` or the PC sees nothing (EVIDENCE 18c/18d).
 

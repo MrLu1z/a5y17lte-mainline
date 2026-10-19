@@ -768,7 +768,7 @@ TWRP→mainline switch: 18d1:4ee2 (TWRP) disconnects, then 1d6b:0104
 "Galaxy A5 2017 (mainline Linux)", Mfr "a5y17lte mainline", serial
 "a5y17lte-m4", cdc_ncm usb0 → enx02a517000002, cdc_acm ttyACM0.
 
-## 19. Milestone 5a: distro kernel config, SYSTEM probe (built 2026-10-19, not yet tested on the phone)
+## 19. Milestone 5a: distro kernel config, SYSTEM probe (PASSED on the phone 2026-10-19, see 19a)
 
 **Read-only lock correction.** Since M3, `a5-diag info` locked the eMMC with
 `BLKROSET` on `/dev/mmcblk0`. In v7.2 that only marks the whole-disk device:
@@ -806,3 +806,20 @@ reads only the ext4 superblock (magic, label, filesystem size).
 **Expected on the phone:** M4 behaviour unchanged (keys, USB network, SSH),
 plus `emmc : BJNB4R, 29820 MiB, 25 partitions, all READ-ONLY` and
 `system : mmcblk0pN, ... MiB, ro=1` with the ext4 superblock line.
+
+### 19a. Hardware result for M5a (2026-10-19)
+
+Jimmy flashed `a5y17lte-mainline-m5a-boot.img` (sha256 `12cf7357…`): the
+screen console and SSH work as in M4. Readings taken over SSH (read-only):
+
+| Reading | Meaning |
+|---|---|
+| `uname -v`: `#1 SMP PREEMPT Mon Oct 19 01:25:32 UTC 2026` | The reproducible build (epoch = commit 510ecc6) |
+| `emmc : BJNB4R, 29820 MiB, 25 partitions, all READ-ONLY`; `/sys/class/block/mmcblk0p*/ro` = 1 for all 25 | `force_ro` now covers every partition |
+| `system : mmcblk0p19, 9928704 sectors = 4848 MiB, ro=1` | SYSTEM is p19, 4848 MiB (5,083,496,448 bytes) |
+| `system : ext4, label "/", 4296 MiB filesystem` | Holds the LineageOS system image Sailfish uses; the filesystem is 552 MiB smaller than the partition |
+| EFS = `mmcblk0p3`, 40960 sectors (20 MiB); USERDATA = `mmcblk0p25`, 50110464 sectors | By GPT name, for the M5c backup |
+| `/proc/config.gz`: 697 options `=y` | The M5 config is running |
+
+All 8 CPUs online; MemTotal 2597040 kB (the extra built-in code costs about 5 MB against M2's 2602388 kB).
+
