@@ -757,3 +757,13 @@ Photo: `evidence/hw-mainline-m4d-ssh.jpg`. PC side:
   (`scp -O`) runs `scp -t` on the phone, which the image also lacked.
   M4e adds dropbear's own `scp` to dropbearmulti (+ /bin/scp symlink), so
   `scp -O` works; a real sftp-server comes with postmarketOS (OpenSSH).
+
+## 18g. M4e on hardware: scp works
+
+Photo: `evidence/hw-mainline-m4e-scp.jpg`. New host key
+`SHA256:p3WHFClYT++zz/SdX4A+J5EEEgQNCT08xVfTPv+l/g4` (generated per boot, eMMC
+read-only). `scp -O test.txt root@172.16.42.1:/tmp/` → 100%, 6 bytes;
+`ssh root@172.16.42.1 cat /tmp/test.txt` → `hello`. PC dmesg on the
+TWRP→mainline switch: 18d1:4ee2 (TWRP) disconnects, then 1d6b:0104
+"Galaxy A5 2017 (mainline Linux)", Mfr "a5y17lte mainline", serial
+"a5y17lte-m4", cdc_ncm usb0 → enx02a517000002, cdc_acm ttyACM0.
