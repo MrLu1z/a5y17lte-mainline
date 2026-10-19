@@ -1092,3 +1092,23 @@ drivers as present. The release strings must match first: the FIT kernel says
   build-pmos.sh removes the link.
 - **Host side effect:** `pmbootstrap shutdown` unregisters the host's
   qemu-aarch64 binfmt; `sudo systemctl restart systemd-binfmt` restores it.
+
+### 23a. M5e step 2a-2c: new rootfs written to SYSTEM (2026-10-19, TWRP)
+
+- **2a (read-only).** By-name EFS → p3, SYSTEM → p19 (5,083,496,448 B), USERDATA
+  → p25; nothing mounted. Backup `~/a5-backup/SYSTEM-p19-pmos-m5c.img` (first
+  686,817,280 B): sha256 `06e88091…` on the phone and the PC, identical to the
+  M5c root.img. So the pmOS SYSTEM was byte-unchanged through M5d (ro,noload)
+  and every TWRP start: TWRP doesn't mount this filesystem.
+- **EFS.** `211aaf7b…`, where after M5c it was `5f6cfe57…`. Compared with
+  `EFS-p3-20261019-1440.img`, one 4K block differs: the superblock (mount
+  count 337 → 338, last mount 16:00:18), i.e. one TWRP start. No file
+  changed.
+- **2b.** `adb push` to TWRP `/tmp` (18.5 MB/s), phone sha256 `bac1e0c6…`;
+  `dd if=/tmp/root.img of=/dev/block/platform/13540000.dwmmc0/by-name/SYSTEM
+  bs=4M && sync`: 688,914,432 B in 8.0 s, exit 0.
+- **2c.** After `blockdev --flushbufs` + `drop_caches`, `head -c 688914432`
+  of SYSTEM: sha256 `bac1e0c6…`. The PC copy of the read-back gives the
+  same hash; e2fsck 1.47.0 clean (`pmOS_root`, UUID `9394aaf4…`, matching
+  its fstab). EFS still `211aaf7b…`. `/tmp/root.img` removed.
+- Next: Jimmy flashes the M5e boot image (2d) and does the first boot (2e).
