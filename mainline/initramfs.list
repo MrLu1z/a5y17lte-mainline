@@ -24,6 +24,7 @@ file /sbin/a5-diag build/a5-diag 0755 0 0
 file /sbin/dropbearmulti upstream/userspace/out/dropbearmulti 0755 0 0
 slink /sbin/dropbear dropbearmulti 0777 0 0
 slink /sbin/dropbearkey dropbearmulti 0777 0 0
+slink /bin/scp ../sbin/dropbearmulti 0777 0 0
 file /etc/passwd mainline/rootfs/etc/passwd 0644 0 0
 file /etc/group mainline/rootfs/etc/group 0644 0 0
 file /etc/shells mainline/rootfs/etc/shells 0644 0 0

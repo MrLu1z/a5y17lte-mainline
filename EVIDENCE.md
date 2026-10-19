@@ -741,3 +741,19 @@ requires a non-multiuser kernel` (PC: `kex_exchange_identification: Connection
 reset by peer`). `DROPBEAR_SVR_MULTIUSER 0` needs CONFIG_MULTIUSER=n; our
 kernel has it =y, so M4d builds the default multi-user dropbear (root from
 /etc/passwd, blank password via -B).
+
+## 18f. M4d on hardware: SSH works (M4 passed)
+
+Photo: `evidence/hw-mainline-m4d-ssh.jpg`. PC side:
+- `enx02a517000002` 172.16.42.2/24 (DHCP), ping 3/3, 1.9–3.6 ms.
+- `ssh root@172.16.42.1` → ED25519 key `SHA256:TDbU+Wc8HhspWRKQvoCM8nO7D+N58FtthHgajBi5xnE`,
+  login banner "Galaxy A5 (2017) - mainline Linux 7.2.0+. eMMC is read-only
+  in this image.", prompt `a5y17lte:~#`.
+- `/tmp/dropbear.log`: "Waiting for kernel randomness to be initialised…"
+  (~9 s at boot), host key generated on first connect, "Auth succeeded with
+  blank password for 'root'".
+- `scp` fails: `sh: /usr/libexec/sftp-server: not found`. OpenSSH 9+ scp
+  uses SFTP by default, and dropbear has no sftp-server. The legacy protocol
+  (`scp -O`) runs `scp -t` on the phone, which the image also lacked.
+  M4e adds dropbear's own `scp` to dropbearmulti (+ /bin/scp symlink), so
+  `scp -O` works; a real sftp-server comes with postmarketOS (OpenSSH).

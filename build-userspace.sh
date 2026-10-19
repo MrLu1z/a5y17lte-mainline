@@ -74,7 +74,7 @@ EOF
       --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp \
       --disable-wtmpx --disable-pututline --disable-pututxline \
       --disable-syslog >/dev/null &&
-  make -j"$JOBS" PROGRAMS="dropbear dropbearkey" MULTI=1 STATIC=1 >/dev/null )
+  make -j"$JOBS" PROGRAMS="dropbear dropbearkey scp" MULTI=1 STATIC=1 >/dev/null )
 llvm-strip -o "$U/out/dropbearmulti" "$U/dropbear/dropbearmulti"
 
 ls -la "$U/out"

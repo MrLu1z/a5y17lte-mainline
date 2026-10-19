@@ -26,7 +26,7 @@ stty -echo -icanon 2>/dev/null
 
 echo
 echo "========================================="
-echo " Galaxy A5 (2017) - mainline Linux M4d"
+echo " Galaxy A5 (2017) - mainline Linux M4e"
 echo "========================================="
 a5-diag info
 a5-diag usb
