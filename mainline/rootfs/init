@@ -103,7 +103,10 @@ boot_nura() {	# rw|ram
 	[ "$(cat /sys/block/mmcblk0/force_ro)" = 1 ] || { echo " nura   : eMMC not read-only, not booting"; return; }
 	mkdir -p $ro $rw $n
 	if [ "$mode" = rw ]; then
-		a5-diag lock-except SYSTEM || return
+		a5-diag lock-except SYSTEM > /tmp/lock.log 2>&1
+		lock_rc=$?
+		cat /tmp/lock.log
+		[ $lock_rc = 0 ] || return
 		if ! mount -t ext4 -o rw,errors=remount-ro "$dev" $n; then
 			echo " nura   : mounting $dev read-write failed"
 			echo 1 > /sys/block/mmcblk0/force_ro

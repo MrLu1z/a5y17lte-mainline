@@ -1112,3 +1112,27 @@ drivers as present. The release strings must match first: the FIT kernel says
   same hash; e2fsck 1.47.0 clean (`pmOS_root`, UUID `9394aaf4…`, matching
   its fstab). EFS still `211aaf7b…`. `/tmp/root.img` removed.
 - Next: Jimmy flashes the M5e boot image (2d) and does the first boot (2e).
+
+## 24. M5e boot test: "lock : check FAILED (1)" and the fix (2026-10-19)
+
+**Phone result.** Kernel and SYSTEM (`pmOS_root`) fine; normal boot → `lock : check
+FAILED (1), force_ro back to 1` → rescue. Nothing was unlocked.
+
+**Cause (kernel source, v7.2, and reproduced on the PC).** `bdev_read_only(bdev)`
+= `BD_READ_ONLY` of that bdev **or** `get_disk_ro(disk)`, and `get_disk_ro()` =
+`BD_READ_ONLY` of the *whole-disk* bdev (`disk->part0`) or `GD_READ_ONLY`
+(`include/linux/blkdev.h:827-836`). So BLKROSET on `/dev/mmcblk0` makes every
+partition read-only, including the kept one; the M5e check `ro[SYSTEM] == 0`
+could never pass (the one failure), and the earlier "whole disk BLKROGET = 1"
+check can't hold together with a writable partition. Loop-device test on the
+PC (6 partitions-style: disk setro, p1/p3 setro, p2 setrw): p2 stays ro=1; with
+the disk flag cleared instead: disk 0, p1/p3 1, p2 0.
+
+**Fix.** `lock-except` now clears the whole-disk flag (BLKROSET 0; `a5-diag info`
+had set it), sets BLKROSET 1 on every other partition and 0 on the kept one,
+sets force_ro 0, and checks each partition's `ro` plus BLKROGET disk = 0. It
+prints every step (device, ioctl, value, errno); init saves it to
+`/tmp/lock.log` and shows it. **Consequence:** the raw `/dev/mmcblk0` node is
+writable in the rw boot; no flag can avoid that while one partition is
+writable. The other 24 partitions are read-only; mmcblk0boot0/1 keep their own
+force_ro = 1.
