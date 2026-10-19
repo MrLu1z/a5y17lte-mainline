@@ -59,8 +59,13 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   e2fsck -fy clean. Known bug: `sudo reboot` in Nura hangs on the Samsung logo
   (recovery forces a reboot). TWRP automounts EFS, so its hash changes (now
   a65f32b8…) without Nura touching it.
-- NEXT (not started): resize2fs of SYSTEM (needs Jimmy's OK), apk via PC NAT,
-  fix the reboot hang.
+- M5e step 4 DONE on the phone (EVIDENCE 25, 25a): SYSTEM grown online from
+  168192 to 1241088 blocks (4848 MiB); df -h / = 4.6G, 12% used. resize2fs
+  can't run on the live root (EBUSY: CONFIG_BLK_DEV_WRITE_MOUNTED is off), so
+  use mainline/tools/ext4-grow.c (ioctl on the mount point; static binary
+  build/ext4-grow-aarch64, not in git). Still to do: reboot + e2fsck of the
+  pulled SYSTEM on the PC to confirm clean.
+- NEXT (not started): apk via PC NAT (needs Jimmy's OK), fix the reboot hang.
 
 ## Roadmap after M5 (Jimmy, 2026-10-19)
 Two OSes on ONE mainline kernel + DT: Nura/postmarketOS (primary, on SYSTEM)

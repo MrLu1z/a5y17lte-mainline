@@ -1177,3 +1177,18 @@ extended to 5,083,496,448 B: `ext4-grow mnt 1241088` → `done: 1202956 blocks`
 Keeping the option off also blocks raw writes to the mounted SYSTEM node, which
 is a useful guard; the alternative (CONFIG_BLK_DEV_WRITE_MOUNTED=y) needs a new
 boot image.
+
+### 25a. M5e step 4: root grown online on the phone (2026-10-19)
+
+Binary `build/ext4-grow-aarch64` (sha256 `55d8e7c1…`), run in Nura as root:
+`sudo /tmp/ext4-grow / 1241088`.
+- Output: `/: block size 4096, now 158492 blocks, growing to 1241088` →
+  `done: 1202956 blocks` (statfs counts, overhead excluded; same numbers as the
+  PC test).
+- `df -h /`: 4.6G total, 538.6M used, 3.9G available, 12%.
+- dmesg: `EXT4-fs (mmcblk0p19): resized filesystem from 168192 to 1241088
+  blocks`, then `resized filesystem to 1241088`.
+- resize2fs itself stays blocked by CONFIG_BLK_DEV_WRITE_MOUNTED being off
+  (EVIDENCE 25).
+- Not yet done: reboot and `e2fsck -fn`/`-fy` of the pulled SYSTEM on the PC
+  to confirm the grown filesystem is clean.
