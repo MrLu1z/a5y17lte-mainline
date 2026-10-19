@@ -904,6 +904,12 @@ Jimmy flashed `a5y17lte-mainline-w0b-boot.img` (14,487,568 B, sha256
 | emmc `all READ-ONLY`; SYSTEM p19 ro=1; USB (UDC, NCM+ACM, MUIC switch, `udc : state configured`), `usb0 172.16.42.1` | M3-M5a behaviour unchanged. |
 | MemTotal 2,595,984 kB (M5a: 2,597,040 kB) | W0b's extra code costs about 1 MB. |
 
+Over SSH (new per-boot host key `SHA256:tLcqUhen…fYg`):
+- `dmesg`: `[drm] Initialized simpledrm 1.0.0 for 67000000.framebuffer on
+  minor 0` at 0.055 s, then `fb0: simpledrmdrmfb frame buffer device`.
+- `/dev/binderfs`: binder-control 250:0, binder 250:1, hwbinder 250:2,
+  vndbinder 250:3, a5test 250:4, plus `features/`.
+
 The banner says "W0" (the W0b build reused W0's init text).
 
 **Next:** W1, Waydroid headless on Nura, after M5d. It needs these W0 options in
