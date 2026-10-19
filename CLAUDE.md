@@ -44,10 +44,11 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   startup, so later SYSTEM hashes change; check with e2fsck instead.
 - Rollback: `adb exec-in "dd of=<by-name>/SYSTEM bs=4M" < ~/a5-backup/SYSTEM-p19.img`
   (5 GB, won't fit in TWRP /tmp), then check for sha256 17530cf1….
-- NEXT: merge branch android-w0 into main first (W0 passed: binder, Waydroid
-  options, simpledrm; BOOT currently holds w0b), then M5d.
-- Then M5d: init mounts SYSTEM read-only and switch_roots. Keep force_ro=1 there:
-  the fstab `/` line says `defaults`, so OpenRC would remount root read-write.
+- android-w0 merged into main (d3b6283).
+- M5d BUILT (EVIDENCE 22), phone test next: out/a5y17lte-mainline-m5d-boot.img,
+  sha256 7ab5ddd7…. Boots Nura from SYSTEM ro (force_ro=1) under a tmpfs
+  overlay, so no eMMC writes; hold Volume Down at the 3 s prompt -> rescue image.
+- Then M5e: read-write root, resize2fs, apk via PC NAT (needs Jimmy's OK).
 
 ## Roadmap after M5 (Jimmy, 2026-10-19)
 Two OSes on ONE mainline kernel + DT: Nura/postmarketOS (primary, on SYSTEM)
