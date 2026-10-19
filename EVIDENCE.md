@@ -733,4 +733,11 @@ User test of M4c (2026-10-19), PC side:
 M4d fix: drop `-E`, pass `-P /var/run/dropbear.pid`, add /var, /var/run,
 /var/log to the cpio and to init's mkdir. Image
 `out/a5y17lte-mainline-m4d-boot.img`, sha256
-`948ffa646e420ec70e943bbdd5cfde03a9f3c8c654cbd71b6713c8e2a9d7ccd9`.
+`5cd13ecb78e97869ac72feaec6e559965c8ec5d4440f113555a3872bebc8f291`.
+
+Manual start in telnet (`mkdir -p /var/run && dropbear -R -B -p 22`) then
+showed the second bug: on connect, `Early exit: Non-multiuser Dropbear
+requires a non-multiuser kernel` (PC: `kex_exchange_identification: Connection
+reset by peer`). `DROPBEAR_SVR_MULTIUSER 0` needs CONFIG_MULTIUSER=n; our
+kernel has it =y, so M4d builds the default multi-user dropbear (root from
+/etc/passwd, blank password via -B).

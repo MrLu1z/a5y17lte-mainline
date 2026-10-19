@@ -68,7 +68,6 @@ echo "== dropbear"
 /* Galaxy A5 test image: dropbear over USB networking only. */
 #define DROPBEAR_SVR_PASSWORD_AUTH 1
 #define DEFAULT_PATH "/bin:/sbin"
-#define DROPBEAR_SVR_MULTIUSER 0
 EOF
   [ -f Makefile ] || CC="$CC" AR=llvm-ar RANLIB=llvm-ranlib ./configure \
       --host=aarch64-linux-musl --disable-zlib --enable-static \
