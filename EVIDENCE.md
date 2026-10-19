@@ -959,3 +959,43 @@ valid rollback.
 - EFS is unchanged by the write (`5f6cfe57…`).
 - The rest of SYSTEM (after the 655 MiB image) still holds old data;
   `resize2fs` in M5e grows the filesystem over it.
+
+## 22. Milestone 5d: boot Nura from SYSTEM, read-only under a RAM overlay (built 2026-10-19, not yet tested on the phone)
+
+Includes W0 (merged, section 20). After the M5a/W0 checks, the gadget, the
+MUIC switch and `usb0 = 172.16.42.1`, `/init` waits 3 s for Volume Down
+(`a5-diag held 3000`, key state via `EVIOCGKEY`). Without it, `/init` does this:
+- **Find and mount SYSTEM.** It finds the partition by GPT name, refuses to
+  continue unless `/sys/block/mmcblk0/force_ro` is 1, and mounts it ext4
+  `ro,noload`. It requires `/sbin/init` and `/usr/lib/os-release` there.
+- **Overlay.** It puts a tmpfs (size 50% of RAM) overlay on top
+  (`CONFIG_OVERLAY_FS`). Writes in Nura go to RAM only and are lost at reboot.
+- **RAM-layer settings.** It writes two files into the RAM layer:
+  `/etc/NetworkManager/conf.d/90-a5y17lte-usb0.conf` (usb0 unmanaged, so our
+  address stays) and `/etc/conf.d/unudhcpd.usb0` (`UNUDHCPD_SERVER=172.16.42.1`;
+  the OpenRC script's default is 172.16.41.1, unudhcpd 0.5.0).
+- **Hand-off.** It moves the layers to `/mnt/system-ro` and `/mnt/overlay-rw`,
+  moves /dev, /proc and /sys (configfs with the gadget comes along), and runs
+  `switch_root /newroot /sbin/init` (busybox init + OpenRC). Nura's own getty
+  on ttyGS0 and sshd take over from our dropbear and serial shell.
+
+If any step fails, or Volume Down is held, the rescue services start as in
+M4/W0 (dropbear root, telnet, udhcpd, serial shell, hold Power -> TWRP).
+
+**Checks so far:**
+- All fragment options applied (OVERLAY_FS, DRM_SIMPLEDRM, ANDROID_BINDERFS, ...).
+- `/init` passes `dash -n` and `bash -n`. Not run anywhere yet: the
+  host can't run aarch64 binaries (binfmt points to a missing
+  qemu-aarch64-static) and `tools/uemu.py` lacks `openat`.
+- Kernel 12.9 MiB in memory (ends 0x48ce0000), below the ramdisk at 0x4feff000.
+- Emulated U-Boot with the FIT at 0x41000000 and 0x5A000000: hashes OK,
+  `reached Linux entry 0x48000000`.
+- Image `out/a5y17lte-mainline-m5d-boot.img`, 14622736 bytes, sha256
+  `7ab5ddd7b9be221693293c6f3758b059474ee7be6dd51ca69b5f12b6022be3a3`.
+
+**Expected on the phone:**
+- `nura : /dev/mmcblk0p19 PRETTY_NAME="Nura edge", read-only`, then
+  `switch_root`, then OpenRC, then a login prompt on tty1.
+- PC: DHCP 172.16.42.2 from unudhcpd; `ssh user@172.16.42.1` (key login;
+  the host key is new on every boot); a getty on /dev/ttyACM0.
+- In Nura, `cat /sys/block/mmcblk0/force_ro` gives 1 and `findmnt /` shows overlay.
