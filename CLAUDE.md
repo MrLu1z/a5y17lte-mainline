@@ -14,10 +14,10 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   by `a5-diag muic` or the PC sees nothing (EVIDENCE 18c/18d).
 
 ## Next milestone: M5 postmarketOS install
-- Jimmy chose target SYSTEM partition. OPEN QUESTION before any write: the
-  phone also runs Sailfish OS; a hybris port normally needs Android /system
-  (vendor blobs). Confirm Sailfish does not depend on SYSTEM, and make a TWRP
-  backup of SYSTEM + BOOT to the PC, before wiping it.
+- Target: SYSTEM partition (Jimmy's choice, 2026-10-19). Sailfish OS is
+  installed (rootfs in USERDATA); Jimmy has the Sailfish boot.img and the
+  original install files, and said it is fine if Sailfish breaks: he can
+  reinstall. Still: don't touch USERDATA, and ask before each eMMC write.
 - Start console-only (SSH + apk), UI (Phosh/Plasma Mobile) after touchscreen.
 
 ## Rules
