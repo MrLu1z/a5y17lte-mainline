@@ -1151,3 +1151,29 @@ Image `out/a5y17lte-mainline-m5e-boot.img` (sha256 `e38f49cd…`, commit 66ba460
 - **EFS.** Now `a65f32b894a23b331cb990a4b76c5b715e8542f9e522ec3ca023a40d0f4b2378`,
   changed again. Cause: TWRP automounts EFS, not Nura (Nura keeps it read-only).
 - Not started: resize2fs, apk via PC NAT.
+
+## 25. M5e step 4: resize2fs fails with EBUSY on the mounted root (2026-10-19)
+
+**Symptom (phone, Nura rw).** `resize2fs /dev/mmcblk0p19` (1.47.4, as root):
+`Resource busy while opening /dev/mmcblk0p19`, also with `-d 1`. `/proc/mounts`
+and `/etc/mtab` correctly show p19 on `/` ext4 rw; `/dev/root` → mmcblk0p19.
+`fuser -m` lists every process (it is the root filesystem), so it can't help.
+
+**Cause.** The built kernel `.config` has `# CONFIG_BLK_DEV_WRITE_MOUNTED is not
+set` (`block/Kconfig:77`, default y, but our allnoconfig base leaves it off).
+With it off, the kernel refuses any write-open of a block device that a
+filesystem has mounted (`BLK_OPEN_RESTRICT_WRITES`, `block/bdev.c`) with EBUSY.
+resize2fs opens the device read-write even for an online resize. No process
+holds the node; lock-except closes its fds and never uses O_EXCL.
+
+**Workaround, no kernel change.** `mainline/tools/ext4-grow.c` issues
+`EXT4_IOC_RESIZE_FS` on the mount point (what resize2fs does after the open;
+no device open needed). Static aarch64 binary: `build/ext4-grow-aarch64`
+(not in git, git-ignored). PC test on a loop-mounted copy of the M5e root.img
+extended to 5,083,496,448 B: `ext4-grow mnt 1241088` → `done: 1202956 blocks`
+(statfs, overhead excluded), 1024369 blocks free, unmount, `e2fsck -fn` clean
+(1241088 blocks). Not yet run on the phone.
+
+Keeping the option off also blocks raw writes to the mounted SYSTEM node, which
+is a useful guard; the alternative (CONFIG_BLK_DEV_WRITE_MOUNTED=y) needs a new
+boot image.
