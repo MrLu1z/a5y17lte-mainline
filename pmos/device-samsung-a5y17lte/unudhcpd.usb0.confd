@@ -1,0 +1,2 @@
+# Galaxy A5 (2017): answer DHCP as the address the boot image gives usb0
+UNUDHCPD_SERVER="172.16.42.1"

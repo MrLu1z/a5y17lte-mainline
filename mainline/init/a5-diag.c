@@ -13,8 +13,12 @@
  *   a5-diag usbregs DWC3 and USB PHY register dump, UDC state
  *   a5-diag android W0: simpledrm KMS device, binderfs + a binder device
  *                   (BINDER_VERSION), PSI - what Waydroid needs
- *   a5-diag held MS exit 0 if Volume Down is held at any time within MS ms
- *                   (M5d: stay in this rescue image instead of booting Nura)
+ *   a5-diag held MS which volume key is held at any time within MS ms:
+ *                   exit 10 Volume Down (rescue), 11 Volume Up (Nura in RAM),
+ *                   1 neither
+ *   a5-diag lock-except NAME
+ *                   M5e: every eMMC block device read-only except the GPT
+ *                   partition NAME, checked via each partition's "ro"
  *   a5-diag keys    PID 1 loop: print key presses, hold Power 3 s ->
  *                   reboot into recovery (TWRP), reap orphaned children
  *
@@ -588,7 +592,7 @@ static int cmd_android(void)
 	return !ok;
 }
 
-/* M5d escape hatch: is Volume Down held now or within the next ms? */
+/* M5d/M5e boot choice: is a volume key held now or within the next ms? */
 static int cmd_held(int ms)
 {
 	long long end = now_ms() + ms;
@@ -607,13 +611,93 @@ static int cmd_held(int ms)
 		for (int i = 0; i < nfds; i++) {
 			unsigned char keys[KEY_MAX / 8 + 1] = { 0 };
 
-			if (ioctl(fds[i], EVIOCGKEY(sizeof(keys)), keys) >= 0 &&
-			    keys[KEY_VOLUMEDOWN / 8] & (1 << (KEY_VOLUMEDOWN % 8)))
-				return 0;
+			if (ioctl(fds[i], EVIOCGKEY(sizeof(keys)), keys) < 0)
+				continue;
+			if (keys[KEY_VOLUMEDOWN / 8] & (1 << (KEY_VOLUMEDOWN % 8)))
+				return 10;
+			if (keys[KEY_VOLUMEUP / 8] & (1 << (KEY_VOLUMEUP % 8)))
+				return 11;
 		}
 		usleep(50000);
 	} while (now_ms() < end);
 	return 1;
+}
+
+/*
+ * M5e: let only one partition be written. BLKROSET marks single block
+ * devices (EVIDENCE 19): every other partition and the whole disk get it,
+ * and only then is the disk-wide force_ro lifted. Each partition's "ro"
+ * attribute (bdev_read_only) must then be 1 everywhere except "keep", and
+ * BLKROGET on the whole disk 1.
+ */
+static int set_ro(const char *dev)
+{
+	int fd = open(dev, O_RDONLY), ro = 1, r;
+
+	if (fd < 0)
+		return -1;
+	r = ioctl(fd, BLKROSET, &ro);
+	close(fd);
+	return r;
+}
+
+static int cmd_lock_except(const char *name)
+{
+	char path[64], val[8];
+	int keep = find_part(name), fd, bad = 0, parts = 0, ro = 0;
+
+	if (keep < 0) {
+		printf(" lock   : no %s partition, eMMC stays read-only\n", name);
+		return 1;
+	}
+	if (set_ro("/dev/mmcblk0"))
+		bad++;
+	for (int i = 1; i < 64; i++) {
+		snprintf(path, sizeof(path), "/dev/mmcblk0p%d", i);
+		if (i == keep || access(path, F_OK))
+			continue;
+		if (set_ro(path))
+			bad++;
+	}
+	if (bad) {
+		printf(" lock   : BLKROSET failed on %d devices, eMMC stays read-only\n", bad);
+		return 1;
+	}
+	fd = open("/sys/block/mmcblk0/force_ro", O_WRONLY);
+	if (fd < 0 || write(fd, "0", 1) != 1) {
+		printf(" lock   : cannot clear force_ro\n");
+		return 1;
+	}
+	close(fd);
+
+	for (int i = 1; i < 64; i++) {
+		snprintf(path, sizeof(path), "/sys/class/block/mmcblk0p%d/ro", i);
+		if (access(path, F_OK))
+			continue;
+		parts++;
+		read_file(path, val, sizeof(val));
+		if (strcmp(val, i == keep ? "0" : "1"))
+			bad++;
+	}
+	/* /sys/block/mmcblk0/ro shows only the disk flag (get_disk_ro), so ask
+	 * the whole-disk device itself: BLKROGET returns bdev_read_only() */
+	fd = open("/dev/mmcblk0", O_RDONLY);
+	if (fd < 0 || ioctl(fd, BLKROGET, &ro) || ro != 1)
+		bad++;
+	if (fd >= 0)
+		close(fd);
+	if (bad) {
+		fd = open("/sys/block/mmcblk0/force_ro", O_WRONLY);
+		if (fd >= 0) {
+			write(fd, "1", 1);
+			close(fd);
+		}
+		printf(" lock   : check FAILED (%d), force_ro back to 1\n", bad);
+		return 1;
+	}
+	printf(" lock   : mmcblk0p%d (%s) writable; mmcblk0 and the other %d partitions read-only\n",
+	       keep, name, parts - 1);
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -637,9 +721,11 @@ int main(int argc, char **argv)
 		return cmd_android();
 	if (!strcmp(argv[1], "held") && argc > 2)
 		return cmd_held(atoi(argv[2]));
+	if (!strcmp(argv[1], "lock-except") && argc > 2)
+		return cmd_lock_except(argv[2]);
 	if (!strcmp(argv[1], "keys"))
 		return cmd_keys();
 usage:
-	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|android|held MS|keys\n");
+	fprintf(stderr, "usage: a5-diag panel|info|system|usb|muic|usbregs|android|held MS|lock-except NAME|keys\n");
 	return 2;
 }
