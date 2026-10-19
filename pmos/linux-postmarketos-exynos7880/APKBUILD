@@ -20,7 +20,6 @@ makedepends="
 	clang
 	findutils
 	flex
-	kmod
 	linux-headers
 	lld
 	llvm
@@ -70,11 +69,13 @@ package() {
 		"$pkgdir"/usr/share/kernel/"$_flavor"/kernel.release
 
 	# No modules, but kmod must know what is built in, or "modprobe zram"
-	# fails (postmarketos-zram-swap, EVIDENCE 22a)
+	# fails (postmarketos-zram-swap, EVIDENCE 22a). The empty modules.order
+	# makes Alpine's kmod trigger run depmod on install; without it, the
+	# trigger treats the directory as uninstalled and deletes modules.dep.
 	local rel="$(cat include/config/kernel.release)"
 	install -Dm644 -t "$pkgdir"/usr/lib/modules/"$rel" \
 		modules.builtin modules.builtin.modinfo
-	depmod -b "$pkgdir"/usr "$rel"
+	install -Dm644 /dev/null "$pkgdir"/usr/lib/modules/"$rel"/modules.order
 }
 
 sha512sums="

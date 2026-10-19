@@ -1040,3 +1040,23 @@ depmod output) for the running kernel release, so modprobe treats built-in
 drivers as present. The release strings must match first: the FIT kernel says
 `7.2.0+` (untagged git tree), the pmOS package would say `7.2.0` (tarball).
 
+
+**Fix, built 2026-10-19 (not on the phone yet).**
+- **Kernel release.** Both kernels are now `7.2.0-a5y17lte`
+  (`CONFIG_LOCALVERSION`, empty `LOCALVERSION`). The kernel package (r1)
+  ships `modules.builtin`, `modules.builtin.modinfo` and an empty
+  `modules.order`.
+- **Two traps on the way.**
+  - Without `modules.order`, Alpine's `kmod-34.2-r1.trigger` treats
+    `/usr/lib/modules/<rel>` as uninstalled and deletes the depmod files.
+    With it, the trigger runs `depmod`.
+  - mkinitfs 2.12.0 (`internal/filelist/modules/modules.go:146`) needs
+    `modules.dep` to exist once the modules directory exists. It accepts
+    missing (built-in) modules.
+- **Checked on the image.** Host `modprobe -n -d <copy> -S 7.2.0-a5y17lte`
+  exits 0 for zram, ext4 and dm_crypt (1 for a made-up name).
+- **doas** added next to sudo-rs (`/etc/doas.d/10-postmarketos.conf`:
+  `permit persist keepenv :wheel`).
+- **New root.img:** 688,914,432 B, sha256 `ef09f3b78962f52b999bc38dee79febb213347eb1a53b23771be12b488a07d72`, e2fsck clean.
+- **Still needed:** the boot image must also be rebuilt (the M5d FIT kernel
+  is still `7.2.0+`); that comes with M5e.
