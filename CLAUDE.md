@@ -25,12 +25,12 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
 ### Where we are (end of 2026-10-19)
 - M5a PASSED on the phone (EVIDENCE 19a): SYSTEM = mmcblk0p19, 5083496448 B;
   EFS = mmcblk0p3, 20971520 B; USERDATA = mmcblk0p25.
-- M5b BUILT, not on the phone yet: ./build-pmos.sh ->
-  build/pmos/samsung-a5y17lte-root.img, 686817280 B, sha256 06e88091addeafbb…
-  (see the .sha256 file), ext4 "pmOS_root", e2fsck clean, OpenRC (pinned:
-  pmOS console UI now defaults to systemd), sshd + unudhcpd.usb0 + nftables,
-  getty on ttyGS0, user "user" with ~/.ssh/id_ed25519.pub, password 147147
-  (placeholder; change with passwd). os-release says "Nura edge".
+- M5b rootfs (first build, 686817280 B, sha256 06e88091addeafbb…, written in
+  M5c; superseded by the M5e rootfs below): ./build-pmos.sh -> ext4
+  "pmOS_root", e2fsck clean, OpenRC (pinned: pmOS console UI now defaults to
+  systemd), sshd + unudhcpd.usb0 + nftables, getty on ttyGS0, user "user" with
+  ~/.ssh/id_ed25519.pub, password 147147 (placeholder; change with passwd).
+  os-release says "Nura edge".
 - M5c steps 1-2 DONE (TWRP, read-only): by-name
   /dev/block/platform/13540000.dwmmc0/by-name/{EFS,SYSTEM} -> p3/p19, sizes
   match. Backups in ~/a5-backup (NOT in git; EFS has the IMEI):
@@ -42,6 +42,11 @@ EVIDENCE.md (every hardware finding, in order) before changing anything.
   modem nv_data, presumably a Sailfish boot; second backup
   EFS-p3-20261019-1440.img). TWRP mounts SYSTEM (/system_root) and EFS at
   startup, so later SYSTEM hashes change; check with e2fsck instead.
+- M5e rootfs ON SYSTEM now (EVIDENCE 23, 23a): build/pmos/samsung-a5y17lte-root.img,
+  688914432 B, sha256 bac1e0c6…, device-samsung-a5y17lte 3-r2, kernel pkg 7.2-r1.
+  Written in M5e step 2b, read back and fsck'd clean. Restore point for the M5c
+  rootfs: ~/a5-backup/SYSTEM-p19-pmos-m5c.img (first 686817280 B, sha256
+  06e88091…, same as the M5c root.img).
 - Rollback: `adb exec-in "dd of=<by-name>/SYSTEM bs=4M" < ~/a5-backup/SYSTEM-p19.img`
   (5 GB, won't fit in TWRP /tmp), then check for sha256 17530cf1….
 - android-w0 merged into main (d3b6283).
