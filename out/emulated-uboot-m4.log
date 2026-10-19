@@ -1,0 +1,129 @@
+----- U-Boot console (UART2) -----
+
+
+U-Boot 2026.10 (Oct 19 2026 - 00:00:36 +0000)
+
+DRAM:  3 GiB
+Core:  88 devices, 9 uclasses, devicetree: separate
+MMC:   
+Loading Environment from nowhere...Loading Environment from nowhere... OK
+In:    serial@13820000
+Out:   serial@13820000
+Err:   serial@13820000
+Net:   No ethernet found.
+Read pressed buttons status
+gpio: pin gpa20 (gpio 32) value is 0
+gpio: pin gpa21 (gpio 33) value is 0
+gpio: pin gpa17 (gpio 31) value is 0
+gpio: pin gpa00 (gpio 16) value is 0
+[2KHit any key to stop autoboot: 0
+## Executing script at 41000000
+a5y17lte: FIT at 41000000, booting mainline Linux (M4)
+## Loading kernel (any) from FIT Image at 41000000 ...
+   Using 'a5y17lte' configuration
+   Trying 'kernel' kernel subimage
+     Description:  Linux (mainline)
+     Type:         Kernel Image
+     Compression:  uncompressed
+     Data Start:   0x410000e0
+     Data Size:    8513544 Bytes = 8.1 MiB
+     Architecture: AArch64
+     OS:           Linux
+     Load Address: 0x48000000
+     Entry Point:  0x48000000
+     Hash algo:    sha256
+     Hash value:   8aa0bfebff2baa12583f2e2e639f6a7fe1dde2e388ab744b5895d379a3e3917d
+   Verifying Hash Integrity ... sha256+ OK
+## Loading ramdisk (any) from FIT Image at 41000000 ...
+   Using 'a5y17lte' configuration
+   Trying 'ramdisk' ramdisk subimage
+     Description:  test initramfs
+     Type:         RAMDisk Image
+     Compression:  uncompressed
+     Data Start:   0x41820b44
+     Data Size:    1028497 Bytes = 1004.4 KiB
+     Architecture: AArch64
+     OS:           Linux
+     Load Address: unavailable
+     Entry Point:  unavailable
+     Hash algo:    sha256
+     Hash value:   23b238476145fed49e6c6007f424df48822dce45068060a8d55dc150c220a0f6
+   Verifying Hash Integrity ... sha256+ OK
+## Loading fdt (any) from FIT Image at 41000000 ...
+   Using 'a5y17lte' configuration
+   Trying 'fdt' fdt subimage
+     Description:  exynos7880-a5y17lte.dtb
+     Type:         Flat Device Tree
+     Compression:  uncompressed
+     Data Start:   0x4181e9e4
+     Data Size:    8345 Bytes = 8.1 KiB
+     Architecture: AArch64
+     Hash algo:    sha256
+     Hash value:   4945aab9204a3b7b646d8e41f04d24dc851c3beadd4e46f98fc580dc5e0f70dd
+   Verifying Hash Integrity ... sha256+ OK
+   Booting using the fdt blob at 0xffb6a770
+Working FDT set to ffb6a770
+   Loading Kernel Image to 48000000
+   Loading Ramdisk to 4ff04000, end 4ffff191 ... OK
+   Loading Device Tree to 000000004fefe000, end 000000004ff03098 ... OK
+Working FDT set to 4fefe000
+
+Starting kernel ...
+
+
+----------------------------------
+u-boot loaded at 0x40080000, FIT at 0x41000000; stopped pc=0x48000000
+RESULT: reached Linux entry 0x48000000, x0 (fdt) = 0x4fefe000, fdt magic 0xd00dfeed, size 12288
+Image magic at entry+0x38: b'ARMd'
+  pinctrl0 = "/soc@0/pinctrl@139f0000";
+  mmc0 = "/soc@0/mmc@13540000";
+  reg = <0x00>;
+  reg = <0x01>;
+  reg = <0x02>;
+  reg = <0x03>;
+  reg = <0x100>;
+  reg = <0x101>;
+  reg = <0x102>;
+  reg = <0x103>;
+  soc@0 {
+  system-controller@106b0000 {
+  reg = <0x106b0000 0x10000>;
+  pinctrl@139f0000 {
+  reg = <0x139f0000 0x1000>;
+  mmc@13540000 {
+  reg = <0x13540000 0x2000>;
+  phy@135c0000 {
+  reg = <0x135c0000 0x100>;
+  usb@13600000 {
+  usb@0 {
+  reg = <0x00 0x10000>;
+  clock-controller@13730000 {
+  reg = <0x13730000 0x1000>;
+  interrupt-controller@106e1000 {
+  reg = <0x106e1000 0x1000 0x106e2000 0x1000 0x106e4000 0x2000 0x106e6000 0x2000>;
+  chosen {
+  linux,initrd-end = <0x00 0x4ffff191>;
+  linux,initrd-start = <0x00 0x4ff04000>;
+  bootargs = "console=tty0 loglevel=7 panic=20 clk_ignore_unused pd_ignore_unused fbcon=font:TER16x32";
+  framebuffer@67000000 {
+  compatible = "simple-framebuffer";
+  reg = <0x00 0x67000000 0x7e9000>;
+  memory@40000000 {
+  device_type = "memory";
+  reg = <0x00 0x40000000 0x10000000 0x00 0x50000000 0x10000000 0x00 0x60000000 0x10000000 0x00 0x70000000 0x10000000 0x00 0x80000000 0x10000000 0x00 0x90000000 0x10000000 0x00 0xa0000000 0x10000000 0x00 0xb0000000 0x10000000 0x00 0xc0000000 0x10000000 0x00 0xd0000000 0x10000000 0x00 0xe0000000 0x10000000 0x00 0xf0000000 0x10000000>;
+  reserved-memory {
+  extra-info@45fff000 {
+  reg = <0x00 0x45fff000 0x1000>;
+  no-map;
+  tima@52800000 {
+  reg = <0x00 0x52800000 0x200000>;
+  no-map;
+  framebuffer@67000000 {
+  reg = <0x00 0x67000000 0x17400000>;
+  no-map;
+  secure-dram@7e400000 {
+  reg = <0x00 0x7e400000 0x1c00000>;
+  no-map;
+  video-scaler@80000000 {
+  reg = <0x00 0x80000000 0x3c00000>;
+  no-map;

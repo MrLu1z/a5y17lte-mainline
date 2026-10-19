@@ -1,7 +1,7 @@
 /dts-v1/;
 
 / {
-	description = "Galaxy A5 (2017) mainline Linux, milestone 3";
+	description = "Galaxy A5 (2017) mainline Linux, milestone 4";
 	#address-cells = <1>;
 
 	images {

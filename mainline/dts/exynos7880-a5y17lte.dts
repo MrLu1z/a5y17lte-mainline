@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Samsung Galaxy A5 (2017), SM-A520F - milestone 3 (console, keys, eMMC)
+ * Samsung Galaxy A5 (2017), SM-A520F - M4 (console, keys, eMMC, USB gadget)
  *
  *  [D] Samsung universal7880 kernel: exynos7880-a5y17lte_common.dtsi,
  *      exynos7880-rmem.dtsi
@@ -74,6 +74,31 @@
 			label = "gpio-keys: KEY_VOLUMEUP";
 			gpios = <&gpa2 0 GPIO_ACTIVE_LOW>;
 		};
+	};
+
+	/*
+	 * [D] exynos7880-a5y17lte_common.dtsi s2mpu05 PMIC: the USB PHY
+	 * supplies LDO8 (3.3 V, vdd33), LDO1 (vdd10) and LDO3 (dwc3-vbus) are
+	 * all regulator-boot-on + regulator-always-on, so S-Boot turns them on
+	 * and nothing turns them off. Until the PMIC has a driver here they are
+	 * described as always-on fixed regulators.
+	 */
+	vdd_ldo1: regulator-ldo1 {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd_ldo1";
+		regulator-min-microvolt = <1000000>;
+		regulator-max-microvolt = <1000000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	vdd_ldo8: regulator-ldo8 {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd_ldo8";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+		regulator-boot-on;
 	};
 
 	/* [D] memory@40000000 0x3E400000 and memory@80000000 0x80000000 (3 GB) */
@@ -154,6 +179,22 @@
 	samsung,dw-mshc-sdr-timing = <0 2>;
 	samsung,dw-mshc-ddr-timing = <2 4>;
 	status = "okay";
+};
+
+/*
+ * [D] usb@13600000: vdd33 LDO8, vdd10 LDO1, high-speed. Samsung uses
+ * dr_mode "otg" with its own MUIC/CCIC notifier; with no cable detection
+ * here, run as a USB peripheral only (gadget networking + serial).
+ */
+&usbdrd {
+	vdd33-supply = <&vdd_ldo8>;
+	vdd10-supply = <&vdd_ldo1>;
+	status = "okay";
+};
+
+&usb_dwc3 {
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
 };
 
 /* [D] key-power/voldown/volup/home: function 0xf (EINT), pud 0, drv 0 */

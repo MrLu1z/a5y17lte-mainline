@@ -22,12 +22,16 @@ The repo name is historical. The earlier XNU/iOS investigation is closed, and th
   - Needed kernel patch 0004: the SMU must grant SECURE_READ on the Exynos7880.
   - Latest image: `out/a5y17lte-mainline-m3d-boot.img`.
 
+- **Milestone 4 (USB networking):** built, waiting for the phone test. Image: `out/a5y17lte-mainline-m4-boot.img`.
+  - Phone at 172.16.42.1; `ssh root@172.16.42.1` (no password), `telnet 172.16.42.1`, or serial on `/dev/ttyACM0`.
+  - eMMC still read-only. Hold Power for 3 s to reboot into TWRP.
+
 ## Mainline milestone 1: boot to a console on screen
 
 ```bash
 sudo apt install git clang lld llvm bison bc cmake build-essential python3 curl
 ./setup.sh            # pinned sources + verified xPack GNU toolchain
-./build-mainline.sh   # -> out/a5y17lte-mainline-m1-boot.img (+ .sha256)
+./build-mainline.sh   # builds userspace on first run; -> out/a5y17lte-mainline-mN-boot.img
 ```
 
 | Path | What it is |

@@ -1,0 +1,31 @@
+From 0273057e837ecfab5e84eb830db3abb17440c4a1 Mon Sep 17 00:00:00 2001
+From: Jimmy <fakeandroit@gmail.com>
+Date: Sun, 18 Oct 2026 23:50:36 +0000
+Subject: [PATCH 7/7] dt-bindings: usb: samsung,exynos-dwc3: add exynos7880
+
+The Exynos7880 USB DRD controller is the Exynos7870 one (same address,
+interrupt and clocks in the Samsung vendor kernel). Add an exynos7880
+compatible with the exynos7870 one as fallback.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml b/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml
+index 8af0143c3..2a5875c15 100644
+--- a/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml
++++ b/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml
+@@ -24,6 +24,9 @@ properties:
+       - items:
+           - const: samsung,exynos8890-dwusb3
+           - const: samsung,exynos7-dwusb3
++      - items:
++          - const: samsung,exynos7880-dwusb3
++          - const: samsung,exynos7870-dwusb3
+       - items:
+           - const: samsung,exynos990-dwusb3
+           - const: samsung,exynos850-dwusb3
+-- 
+2.43.0
+

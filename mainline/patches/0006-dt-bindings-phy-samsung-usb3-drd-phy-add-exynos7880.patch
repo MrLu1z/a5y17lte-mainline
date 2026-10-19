@@ -1,0 +1,59 @@
+From d0b82ffd346de472175752ce48510e2aadc8f912 Mon Sep 17 00:00:00 2001
+From: Jimmy <fakeandroit@gmail.com>
+Date: Sun, 18 Oct 2026 23:50:36 +0000
+Subject: [PATCH 6/7] dt-bindings: phy: samsung,usb3-drd-phy: add exynos7880
+
+The Exynos7880 USB DRD PHY is the Exynos7870 one: the Samsung vendor
+kernel describes it with the exynos7870-usbdrd-phy compatible, at the
+same address, with the same PMU control register (0x704). Add an
+exynos7880 compatible with the exynos7870 one as fallback.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ .../bindings/phy/samsung,usb3-drd-phy.yaml    | 30 +++++++++++--------
+ 1 file changed, 17 insertions(+), 13 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml b/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml
+index 4562e0468..9a4a69a2f 100644
+--- a/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml
++++ b/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml
+@@ -24,19 +24,23 @@ description: |
+ 
+ properties:
+   compatible:
+-    enum:
+-      - google,gs101-usb31drd-phy
+-      - samsung,exynos2200-usb32drd-phy
+-      - samsung,exynos5250-usbdrd-phy
+-      - samsung,exynos5420-usbdrd-phy
+-      - samsung,exynos5433-usbdrd-phy
+-      - samsung,exynos7-usbdrd-phy
+-      - samsung,exynos7870-usbdrd-phy
+-      - samsung,exynos850-usbdrd-phy
+-      - samsung,exynos990-usbdrd-phy
+-      - samsung,exynosautov920-usb31drd-combo-ssphy
+-      - samsung,exynosautov920-usbdrd-combo-hsphy
+-      - samsung,exynosautov920-usbdrd-phy
++    oneOf:
++      - enum:
++          - google,gs101-usb31drd-phy
++          - samsung,exynos2200-usb32drd-phy
++          - samsung,exynos5250-usbdrd-phy
++          - samsung,exynos5420-usbdrd-phy
++          - samsung,exynos5433-usbdrd-phy
++          - samsung,exynos7-usbdrd-phy
++          - samsung,exynos7870-usbdrd-phy
++          - samsung,exynos850-usbdrd-phy
++          - samsung,exynos990-usbdrd-phy
++          - samsung,exynosautov920-usb31drd-combo-ssphy
++          - samsung,exynosautov920-usbdrd-combo-hsphy
++          - samsung,exynosautov920-usbdrd-phy
++      - items:
++          - const: samsung,exynos7880-usbdrd-phy
++          - const: samsung,exynos7870-usbdrd-phy
+ 
+   clocks:
+     minItems: 1
+-- 
+2.43.0
+

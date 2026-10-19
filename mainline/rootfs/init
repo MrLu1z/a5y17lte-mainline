@@ -1,0 +1,86 @@
+#!/bin/busybox sh
+# Galaxy A5 (2017) mainline test image - M4: USB networking.
+# PID 1. Sets up the console, runs the hardware checks, brings up a USB
+# gadget (NCM network + ACM serial), then serves:
+#   ssh root@172.16.42.1        (dropbear, no password, USB cable only)
+#   telnet 172.16.42.1          (fallback)
+#   /dev/ttyACM0 on the PC      (serial shell)
+# and finally becomes the key loop (hold Power 3 s -> TWRP).
+/bin/busybox --install -s
+export PATH=/bin:/sbin
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts /tmp /run /root /etc/dropbear /sys/kernel/config /sys/kernel/debug
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /tmp
+mount -t configfs configfs /sys/kernel/config
+mount -t debugfs debugfs /sys/kernel/debug
+hostname a5y17lte
+
+a5-diag panel
+echo 4 > /proc/sys/kernel/printk
+stty -echo -icanon 2>/dev/null
+
+echo
+echo "========================================="
+echo " Galaxy A5 (2017) - mainline Linux M4"
+echo "========================================="
+a5-diag info
+a5-diag usb
+
+# USB device controller: if the PHY/DWC3 failed to probe because a clock was
+# off, a5-diag usb has just turned it on; bind the drivers again.
+if [ -z "$(ls /sys/class/udc 2>/dev/null)" ]; then
+	echo " usb    : no UDC yet, re-binding PHY and DWC3"
+	echo 135c0000.phy > /sys/bus/platform/drivers/exynos5_usb3drd_phy/bind 2>/dev/null
+	echo 13600000.usb > /sys/bus/platform/drivers/exynos-dwc3/bind 2>/dev/null
+	sleep 1
+fi
+UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
+echo " usb    : UDC = ${UDC:-NONE}"
+
+G=/sys/kernel/config/usb_gadget/a5
+if [ -n "$UDC" ]; then
+	mkdir -p $G
+	echo 0x1d6b > $G/idVendor	# Linux Foundation
+	echo 0x0104 > $G/idProduct	# Multifunction Composite Gadget
+	echo 0x0200 > $G/bcdUSB
+	mkdir -p $G/strings/0x409
+	echo "a5y17lte mainline" > $G/strings/0x409/manufacturer
+	echo "Galaxy A5 2017 (mainline Linux)" > $G/strings/0x409/product
+	echo "a5y17lte-m4" > $G/strings/0x409/serialnumber
+	mkdir -p $G/configs/c.1/strings/0x409
+	echo "NCM network + ACM serial" > $G/configs/c.1/strings/0x409/configuration
+	echo 250 > $G/configs/c.1/MaxPower
+	mkdir -p $G/functions/ncm.usb0 $G/functions/acm.GS0
+	echo 02:a5:17:00:00:01 > $G/functions/ncm.usb0/dev_addr
+	echo 02:a5:17:00:00:02 > $G/functions/ncm.usb0/host_addr
+	ln -s $G/functions/ncm.usb0 $G/configs/c.1/
+	ln -s $G/functions/acm.GS0 $G/configs/c.1/
+	echo "$UDC" > $G/UDC && echo " usb    : gadget bound (NCM + ACM)"
+fi
+
+if ifconfig usb0 172.16.42.1 netmask 255.255.255.0 up 2>/dev/null; then
+	touch /tmp/udhcpd.leases
+	udhcpd /etc/udhcpd.conf
+	dropbear -R -B -E -p 22 2>/tmp/dropbear.log
+	telnetd -l /bin/sh -p 23
+	echo " net    : usb0 172.16.42.1 (PC gets 172.16.42.2 by DHCP)"
+	echo " net    : ssh root@172.16.42.1   (no password)"
+	echo " net    : telnet 172.16.42.1     (fallback)"
+else
+	echo " net    : usb0 missing"
+fi
+
+# serial shell on the ACM port, respawned
+if [ -e /dev/ttyGS0 ]; then
+	( while true; do setsid cttyhack sh -l </dev/ttyGS0 >/dev/ttyGS0 2>&1; sleep 1; done ) &
+	echo " serial : shell on the PC's /dev/ttyACM0"
+fi
+
+echo
+echo " Hold POWER for 3 s to reboot into TWRP."
+echo
+exec a5-diag keys

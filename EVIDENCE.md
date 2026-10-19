@@ -514,6 +514,81 @@ Watch for it, but it doesn't affect function.
 - The fixed clocks stay until a 7880 CMU driver exists.
 - HS200/HS400 (up to ~200 MB/s) would need tuning and a real clock driver.
 
+## 18. Milestone 4: USB networking (built 2026-10-19, not yet tested on the phone)
+
+### The 7880 USB block is the 7870's
+
+Every point below comes from the Samsung universal7880 kernel unless marked.
+
+| Item | Exynos7880 (Samsung) | Exynos7870 (mainline v7.2) |
+|---|---|---|
+| Controller | `udc: usb@13600000`, `samsung,exynos7870-dwusb2`, DWC3 at SPI 230 | `usb@13600000`, `samsung,exynos7870-dwusb3`, SPI 230 |
+| PHY | `usbphy@135c0000`, `samsung,exynos7870-usbdrd-phy`, PMU syscon | `phy@135c0000`, same compatible |
+| PMU PHY control | `PMU_USBDEV_PHY_CONTROL` = PMU + 0x704 (`S5E7880-pmusfr.h:197`) | `EXYNOS5_USBDRD_PHY_CONTROL` 0x704, enable bit 1 |
+| No VBUS pad | `is_not_vbus_pad` (7880 **and** Samsung's own 7870 DT) | mainline 7870 PHY init forces VBUSVALID/BVALID and sets VBUSVLDEXT |
+| USB PLL | pll1418x, `usb_pll_rates` = 50 MHz (M 400, P 13, S 4) | pll_1417x/1418x share the same 0822x formula |
+
+**CMU_FSYS (0x13730000).** Compared register by register between Samsung's `S5E7870-cmusfr.h` and `S5E7880-cmusfr.h`:
+
+- All 32 Exynos7870 registers sit at the same offsets on the 7880; the 7880 adds one (`CLK_ENABLE_CLK_FSYS_BUS_SECURE_INTMEM`, 0x840).
+- In `-cmu.c`, every FSYS gate has the same register and bit. The only difference is the parent's home: CMU_MIF on the 7870, CMU_CCORE on the 7880.
+
+So the **mainline Exynos7870 CMU_FSYS driver can drive the 7880's**. Its inputs from CMU_CCORE are fixed clocks for now, given the clock names the 7870 driver looks up.
+
+**USB supplies.** In `exynos7880-a5y17lte_common.dtsi`, the s2mpu05 PMIC supplies:
+
+- LDO8 (vdd33)
+- LDO1 (vdd10)
+- LDO3 (dwc3-vbus)
+
+All three are `regulator-boot-on` and `regulator-always-on`, so they are described here as always-on fixed regulators.
+
+**Open risk: the USB PLL may be off.**
+
+- Mainline's pll_1417x has no rate table, so it only gets recalc ops and **cannot enable the PLL**. It relies on S-Boot.
+- Samsung's kernel calls `vclk_disable(p1_usb_pll)` at boot (`S5E7880-vclk.c:854`), which suggests S-Boot leaves it on. Not confirmed.
+- The M4 `a5-diag usb` step therefore prints USB_PLL_CON0, the FSYS gates, the CCORE FSYS_BUS/USB20DRD mux/div/enable and the PMU 0x704 state.
+- If the PLL or a CCORE gate is off, it programs Samsung's 50 MHz values or turns the gate on, then `/init` re-binds the PHY and DWC3.
+
+### Kernel patches 0005–0007
+
+All three are binding-only and checkpatch-clean:
+
+- `dt-bindings: clock: samsung,exynos7870-cmu: add exynos7880 CMU_FSYS`
+- `dt-bindings: phy: samsung,usb3-drd-phy: add exynos7880`
+- `dt-bindings: usb: samsung,exynos-dwc3: add exynos7880`
+
+Each uses the 7870 compatible as fallback. **No driver change is needed.**
+
+Not checked: `dt_binding_check`. dtschema can't be installed here (PyPI is unreachable); the edited YAML parses.
+
+### Userspace
+
+Static aarch64 binaries built with clang against musl 1.2.5 (`build-userspace.sh`):
+
+- busybox 1.36.1
+- dropbear 2026.94
+- `a5-diag`
+
+They were smoke-tested in a Unicorn user-mode runner (`tools/uemu.py`): musl long-double printf, `busybox echo`, `busybox sh -c`, `dropbear -V`.
+
+### Gadget and services
+
+- Composite gadget: **NCM** network + **ACM** serial (VID 0x1d6b, PID 0x0104).
+- The phone is 172.16.42.1 (postmarketOS convention); udhcpd gives the PC 172.16.42.2 with no router, so the PC keeps its normal internet route.
+- Services:
+  - dropbear on port 22: root, empty password, `-B`
+  - telnetd on port 23
+  - a shell on the ACM port
+- The eMMC stays read-only (BLKROSET).
+
+### Checks so far
+
+- Kernel builds; every config option applied.
+- DTB builds with W=1 and no warnings.
+- The initramfs contains busybox, dropbear and a5-diag.
+- The emulated U-Boot path reaches the Linux entry with a 12 KB FDT.
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).

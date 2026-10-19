@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Samsung Exynos 7880 SoC device tree source - milestone 1 (boot to console)
+ * Samsung Exynos 7880 SoC device tree source
  *
- * Only blocks that need no clock driver: CPUs (PSCI), GIC, architected
- * timer, the PMU (for reboot) and, from milestone 2, the ALIVE pin
- * controller (no clock in mainline 7870 either). Clock controllers, other
- * pin controllers, UART etc. come in later milestones.
+ * M1: CPUs (PSCI), GIC, architected timer, PMU (reboot). M2: ALIVE pin
+ * controller. M3: eMMC (fixed clocks). M4: CMU_FSYS (Exynos7870 driver,
+ * identical register map), USB DRD PHY and DWC3 controller.
  *
  * Sources for every value:
  *  [D] Samsung universal7880 kernel, hybris-17.1: arch/arm64/boot/dts/exynos7880.dtsi
  *  [M] Linux v7.2 arch/arm64/boot/dts/exynos/exynos7870.dtsi (sibling SoC)
  *  [H] a5y17lte hardware readings, EVIDENCE.md sections 12
+ *  [P] Samsung pwrcal S5E7880-cmusfr.h / -cmu.c / -pmusfr.h (same kernel)
  */
 
+#include <dt-bindings/clock/samsung,exynos7870-cmu.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 
 / {
@@ -127,6 +128,36 @@
 		clock-output-names = "fsys_mmc0_ciu_fixed";
 	};
 
+	/* [D] 26 MHz crystal; [M] node name gives the "oscclk" clock name */
+	oscclk: oscclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <26000000>;
+		clock-output-names = "oscclk";
+	};
+
+	/*
+	 * TEMPORARY: the two CMU_FSYS inputs come from CMU_CCORE on Exynos7880
+	 * ([P] CCORE_GATE_CLKCMU_FSYS_BUS / _USB20DRD_REFCLK), which has no
+	 * Linux driver yet. The Exynos7870 CMU_FSYS driver looks its parents up
+	 * by the CMU_MIF clock names, hence these output names. S-Boot leaves
+	 * them running; the M4 init prints the real CCORE mux/div values.
+	 * Rates are placeholders (BUS_PLL/2/4 and /16) until measured.
+	 */
+	clk_ccore_fsys_bus: clock-ccore-fsys-bus {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <199875000>;
+		clock-output-names = "gout_mif_cmu_fsys_bus";
+	};
+
+	clk_ccore_fsys_usb20drd: clock-ccore-fsys-usb20drd {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <49968750>;
+		clock-output-names = "gout_mif_cmu_fsys_usb20drd_refclk";
+	};
+
 	/* [D] psci: method smc, cpu_suspend 0xC4000001 (same IDs as [M]) */
 	psci {
 		compatible = "arm,psci";
@@ -200,6 +231,70 @@
 			clocks = <&clk_fsys_mmc0_biu>, <&clk_fsys_mmc0_ciu>;
 
 			status = "disabled";
+		};
+
+		/*
+		 * [D] usbdrd_phy: usbphy@135c0000, "samsung,exynos7870-usbdrd-phy"
+		 * with the PMU syscon; [P] PMU_USBDEV_PHY_CONTROL = PMU + 0x704,
+		 * the same offset the Exynos7870 PHY driver uses.
+		 */
+		usbdrd_phy: phy@135c0000 {
+			compatible = "samsung,exynos7880-usbdrd-phy",
+				     "samsung,exynos7870-usbdrd-phy";
+			reg = <0x135c0000 0x100>;
+			#phy-cells = <1>;
+
+			clock-names = "phy", "ref";
+			clocks = <&cmu_fsys CLK_GOUT_FSYS_MUX_USB20DRD_PHYCLOCK_USER>,
+				 <&cmu_fsys CLK_GOUT_FSYS_MUX_USB_PLL>;
+
+			samsung,pmu-syscon = <&pmu_system_controller>;
+		};
+
+		/*
+		 * [D] udc: usb@13600000, "samsung,exynos7870-dwusb2", DWC3 at
+		 * SPI 230, same clocks as Exynos7870.
+		 */
+		usbdrd: usb@13600000 {
+			compatible = "samsung,exynos7880-dwusb3",
+				     "samsung,exynos7870-dwusb3";
+			ranges = <0x0 0x13600000 0x10000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			clock-names = "bus_early", "ref", "ctrl";
+			clocks = <&cmu_fsys CLK_GOUT_FSYS_USB20DRD_ACLK_HSDRD>,
+				 <&cmu_fsys CLK_GOUT_FSYS_USB20DRD_HSDRD_REF_CLK>,
+				 <&cmu_fsys CLK_GOUT_FSYS_USB20DRD_HCLK_USB20_CTRL>;
+
+			status = "disabled";
+
+			usb_dwc3: usb@0 {
+				compatible = "snps,dwc3";
+				reg = <0x0 0x10000>;
+				interrupts = <GIC_SPI 230 IRQ_TYPE_LEVEL_HIGH>;
+
+				phy-names = "usb2-phy";
+				phys = <&usbdrd_phy 0>;
+
+				snps,usb2-gadget-lpm-disable;
+			};
+		};
+
+		/*
+		 * [P] CMU_FSYS @ 0x13730000: all 32 Exynos7870 registers at the
+		 * same offsets and bits (7880 adds one gate register), USB_PLL is
+		 * the same pll1418x. Inputs: OSCCLK, CMU_CCORE FSYS_BUS/USB20DRD.
+		 */
+		cmu_fsys: clock-controller@13730000 {
+			compatible = "samsung,exynos7880-cmu-fsys",
+				     "samsung,exynos7870-cmu-fsys";
+			reg = <0x13730000 0x1000>;
+			#clock-cells = <1>;
+
+			clock-names = "oscclk", "bus", "usb20drd";
+			clocks = <&oscclk>, <&clk_ccore_fsys_bus>,
+				 <&clk_ccore_fsys_usb20drd>;
 		};
 
 		/* [D] gic: interrupt-controller@106E1000, 4 regions, PPI 9 */

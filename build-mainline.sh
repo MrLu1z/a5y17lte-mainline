@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Galaxy A5 (2017) mainline Linux (current milestone: M3d, eMMC with kernel SMU fix).
+# Galaxy A5 (2017) mainline Linux (current milestone: M4, USB networking).
 # Builds: Linux 7.2 Image + A5 device tree, nolibc init + initramfs,
 # U-Boot (a5y17lte_defconfig, position independent), a FIT payload, and the
 # boot image S-Boot loads:  kernel = u-boot.bin, ramdisk = FIT.
@@ -45,14 +45,13 @@ KCONFIG_ALLCONFIG="$ML/config/a5y17lte.config" "${KM[@]}" allnoconfig >/dev/null
 "${KM[@]}" -j"$JOBS" Image exynos/exynos7880-a5y17lte.dtb headers usr/gen_init_cpio >/dev/null
 cp "$LINUX/arch/arm64/boot/Image" "$LINUX/arch/arm64/boot/dts/exynos/exynos7880-a5y17lte.dtb" "$B/fit/"
 
-echo "== init (nolibc) + initramfs"
-clang --target=aarch64-linux-gnu -Os -static -nostdlib -nostdinc \
-	-isystem "$(clang -print-resource-dir)/include" \
-	-fno-stack-protector -fno-asynchronous-unwind-tables -ffreestanding -fuse-ld=lld \
-	-I "$LINUX/tools/include/nolibc" -I "$LINUX/usr/include" \
-	-include "$LINUX/tools/include/nolibc/nolibc.h" -Wall -Werror \
-	-o "$B/init" "$ML/init/init.c"
-sed "s#build/init#$B/init#" "$ML/initramfs.list" > "$B/initramfs.list"
+echo "== userspace (busybox, dropbear, a5-diag) + initramfs"
+[ -x "$ROOT/upstream/userspace/out/busybox" ] || "$ROOT/build-userspace.sh"
+"$ROOT/upstream/userspace/bin/aarch64-musl-cc" -Os -Wall -Werror \
+	-o "$B/a5-diag" "$ML/init/a5-diag.c"
+llvm-strip "$B/a5-diag"
+"$ROOT/upstream/userspace/out/busybox" sh -n "$ML/rootfs/init" 2>/dev/null || true
+sed -E "s#^(file [^ ]+ )([^/ ][^ ]*)#\\1$ROOT/\\2#" "$ML/initramfs.list" > "$B/initramfs.list"
 "$LINUX/usr/gen_init_cpio" "$B/initramfs.list" | gzip -9n > "$B/fit/initramfs.cpio.gz"
 
 echo "== U-Boot (GNU toolchain: U-Boot's arm64 linker script needs GNU ld;
@@ -79,6 +78,6 @@ python3 "$ROOT/tools/mkbootimg_v0.py" pack \
 	--kernel "$B/u-boot/u-boot.bin" --ramdisk "$B/a5y17lte.fit" \
 	--base 0x40000000 --kernel_offset 0x00000000 --ramdisk_offset 0x01000000 \
 	--tags_offset 0x00000100 --second_offset 0x00f00000 --pagesize 2048 \
-	-o "$OUT/a5y17lte-mainline-m3d-boot.img"
-python3 "$ROOT/tools/mkbootimg_v0.py" info "$OUT/a5y17lte-mainline-m3d-boot.img"
-( cd "$OUT" && sha256sum a5y17lte-mainline-m3d-boot.img | tee a5y17lte-mainline-m3d-boot.img.sha256 )
+	-o "$OUT/a5y17lte-mainline-m4-boot.img"
+python3 "$ROOT/tools/mkbootimg_v0.py" info "$OUT/a5y17lte-mainline-m4-boot.img"
+( cd "$OUT" && sha256sum a5y17lte-mainline-m4-boot.img | tee a5y17lte-mainline-m4-boot.img.sha256 )
