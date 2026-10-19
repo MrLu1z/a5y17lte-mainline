@@ -26,6 +26,7 @@
 	aliases {
 		/* index into exynos7880_pin_ctrl[] (Linux pinctrl-exynos-arm64.c) */
 		pinctrl0 = &pinctrl_alive;
+		pinctrl6 = &pinctrl_top;
 	};
 
 	cpus {
@@ -200,6 +201,16 @@
 				mode-download = <0x12345671>;
 				mode-recovery = <0x12345674>;
 			};
+		};
+
+		/*
+		 * [D] pinctrl_6: pinctrl@139B0000 (TOP), GPIO EINT on SPI 438;
+		 * same address and interrupt as the Exynos7870 TOP controller.
+		 */
+		pinctrl_top: pinctrl@139b0000 {
+			compatible = "samsung,exynos7880-pinctrl";
+			reg = <0x139b0000 0x1000>;
+			interrupts = <GIC_SPI 438 IRQ_TYPE_LEVEL_HIGH>;
 		};
 
 		/* [D] pinctrl_0: pinctrl@139F0000, wake-up EINT on SPI 16 */

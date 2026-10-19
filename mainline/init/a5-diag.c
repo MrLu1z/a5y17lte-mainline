@@ -7,6 +7,9 @@
  *   a5-diag info    kernel, CPUs, memory, eMMC (locked read-only first)
  *   a5-diag usb     USB clock/PHY state as S-Boot left it; turns on the
  *                   USB PLL and CCORE gates if they are off (M4 diagnosis)
+ *   a5-diag muic    read the S2MU004 MUIC over /dev/i2c-N and, if the USB
+ *                   D+/D- switch is not on USB, set manual mode + USB
+ *   a5-diag usbregs DWC3 and USB PHY register dump, UDC state
  *   a5-diag keys    PID 1 loop: print key presses, hold Power 3 s ->
  *                   reboot into recovery (TWRP), reap orphaned children
  *
@@ -27,7 +30,10 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <linux/fs.h>
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
 #include <linux/input.h>
 #include <linux/reboot.h>
 
@@ -195,6 +201,144 @@ static int cmd_usb(void)
 	return 0;
 }
 
+/* ---- S2MU004 MUIC (Samsung include/linux/mfd/samsung/s2mu004-private.h,
+ *      include/linux/muic/s2mu004-muic.h, drivers/muic/s2mu004-muic.c) ---- */
+#define MUIC_ADDR		0x3d
+#define MUIC_ADC		0x61
+#define MUIC_DEVICE_TYPE1	0x62
+#define MUIC_DEVICE_TYPE2	0x63
+#define MUIC_DEVICE_TYPE3	0x64
+#define MUIC_CHG_TYPE		0x68
+#define MUIC_REV_ID		0x82
+#define MUIC_CTRL1		0xc7
+#define MUIC_SW_CTRL		0xca
+#define CTRL1_MANUAL_SW		(1 << 2)	/* 1 = auto switching, 0 = manual */
+#define SW_DM_DP_MASK		0xfc
+#define SW_USB			((1 << 5) | (1 << 2))	/* DM=USB, DP=USB */
+
+static int i2c_fd = -1;
+
+static int i2c_open_muic(void)
+{
+	DIR *d = opendir("/sys/bus/i2c/devices");
+	struct dirent *e;
+	char path[96], name[64];
+
+	if (!d)
+		return -1;
+	while ((e = readdir(d))) {
+		if (strncmp(e->d_name, "i2c-", 4))
+			continue;
+		snprintf(path, sizeof(path), "/sys/bus/i2c/devices/%s/name", e->d_name);
+		read_file(path, name, sizeof(name));
+		if (strstr(name, "muic")) {
+			snprintf(path, sizeof(path), "/dev/%s", e->d_name);
+			i2c_fd = open(path, O_RDWR);
+			printf(" muic   : bus %s (%s)\n", e->d_name, name);
+			break;
+		}
+	}
+	closedir(d);
+	return i2c_fd;
+}
+
+static int muic_rd(uint8_t reg)
+{
+	uint8_t val = 0;
+	struct i2c_msg msgs[2] = {
+		{ .addr = MUIC_ADDR, .flags = 0, .len = 1, .buf = &reg },
+		{ .addr = MUIC_ADDR, .flags = I2C_M_RD, .len = 1, .buf = &val },
+	};
+	struct i2c_rdwr_ioctl_data x = { .msgs = msgs, .nmsgs = 2 };
+
+	return ioctl(i2c_fd, I2C_RDWR, &x) == 2 ? val : -1;
+}
+
+static int muic_wr(uint8_t reg, uint8_t val)
+{
+	uint8_t buf[2] = { reg, val };
+	struct i2c_msg msg = { .addr = MUIC_ADDR, .flags = 0, .len = 2, .buf = buf };
+	struct i2c_rdwr_ioctl_data x = { .msgs = &msg, .nmsgs = 1 };
+
+	return ioctl(i2c_fd, I2C_RDWR, &x) == 1 ? 0 : -1;
+}
+
+static const char *sw_path(int v)
+{
+	switch ((v >> 2) & 7) {	/* DP field; DM mirrors it for normal paths */
+	case 0: return "OPEN";
+	case 1: return "USB";
+	case 2: return "UART";
+	case 3: return "UART2";
+	default: return "?";
+	}
+}
+
+static int cmd_muic(void)
+{
+	int ctrl, sw, rev;
+
+	if (i2c_open_muic() < 0) {
+		printf(" muic   : no i2c-gpio-muic bus\n");
+		return 1;
+	}
+	rev = muic_rd(MUIC_REV_ID);
+	ctrl = muic_rd(MUIC_CTRL1);
+	sw = muic_rd(MUIC_SW_CTRL);
+	if (rev < 0 || ctrl < 0 || sw < 0) {
+		printf(" muic   : I2C read FAILED (rev %d ctrl %d sw %d)\n", rev, ctrl, sw);
+		return 1;
+	}
+	printf(" muic   : rev %02x adc %02x dev %02x %02x %02x chg %02x\n", rev,
+	       muic_rd(MUIC_ADC), muic_rd(MUIC_DEVICE_TYPE1),
+	       muic_rd(MUIC_DEVICE_TYPE2), muic_rd(MUIC_DEVICE_TYPE3),
+	       muic_rd(MUIC_CHG_TYPE));
+	printf(" muic   : CTRL1 %02x (%s switching)  SW_CTRL %02x (D+/D- = %s)\n",
+	       ctrl, (ctrl & CTRL1_MANUAL_SW) ? "auto" : "manual", sw, sw_path(sw));
+
+	if ((sw & SW_DM_DP_MASK) != SW_USB || (ctrl & CTRL1_MANUAL_SW)) {
+		muic_wr(MUIC_SW_CTRL, (sw & 0x03) | SW_USB);
+		muic_wr(MUIC_CTRL1, ctrl & ~CTRL1_MANUAL_SW);
+		ctrl = muic_rd(MUIC_CTRL1);
+		sw = muic_rd(MUIC_SW_CTRL);
+		printf(" muic   : SET  CTRL1 %02x (%s)  SW_CTRL %02x (D+/D- = %s)\n",
+		       ctrl, (ctrl & CTRL1_MANUAL_SW) ? "auto" : "manual", sw, sw_path(sw));
+		return 10;	/* tell /init to re-attach the gadget */
+	}
+	return 0;
+}
+
+static int cmd_usbregs(void)
+{
+	volatile uint32_t *dwc = map(0x1360c000), *phy = map(0x135c0000);
+	char st[64] = "";
+	DIR *d = opendir("/sys/class/udc");
+	struct dirent *e;
+
+	while (d && (e = readdir(d))) {
+		char path[96];
+
+		if (e->d_name[0] == '.')
+			continue;
+		snprintf(path, sizeof(path), "/sys/class/udc/%s/state", e->d_name);
+		read_file(path, st, sizeof(st));
+	}
+	if (d)
+		closedir(d);
+	printf(" udc    : state %s\n", st[0] ? st : "?");
+	if (dwc)	/* DWC3 global/device registers at 0xc000 */
+		printf(" dwc3   : GCTL %08x GSTS %08x U2PHY %08x\n"
+		       "          DCFG %08x DCTL %08x DSTS %08x\n",
+		       R(dwc, 0x110), R(dwc, 0x118), R(dwc, 0x200),
+		       R(dwc, 0x700), R(dwc, 0x704), R(dwc, 0x70c));
+	if (phy)	/* mainline phy-exynos5-usbdrd.c EXYNOS5/7870 offsets */
+		printf(" phy    : LINKSYS %08x UTMI %08x CLKRST %08x\n"
+		       "          HSPHYCTRL %08x PLLTUNE %08x\n",
+		       R(phy, 0x04), R(phy, 0x08), R(phy, 0x10),
+		       R(phy, 0x54), R(phy, 0x70));
+	return 0;
+}
+
 static long long now_ms(void)
 {
 	struct timespec ts;
@@ -275,9 +419,13 @@ int main(int argc, char **argv)
 		return cmd_info();
 	if (!strcmp(argv[1], "usb"))
 		return cmd_usb();
+	if (!strcmp(argv[1], "muic"))
+		return cmd_muic();
+	if (!strcmp(argv[1], "usbregs"))
+		return cmd_usbregs();
 	if (!strcmp(argv[1], "keys"))
 		return cmd_keys();
 usage:
-	fprintf(stderr, "usage: a5-diag panel|info|usb|keys\n");
+	fprintf(stderr, "usage: a5-diag panel|info|usb|muic|usbregs|keys\n");
 	return 2;
 }

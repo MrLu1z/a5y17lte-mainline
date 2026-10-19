@@ -26,7 +26,7 @@ stty -echo -icanon 2>/dev/null
 
 echo
 echo "========================================="
-echo " Galaxy A5 (2017) - mainline Linux M4b"
+echo " Galaxy A5 (2017) - mainline Linux M4c"
 echo "========================================="
 a5-diag info
 a5-diag usb
@@ -64,6 +64,16 @@ if [ -n "$UDC" ]; then
 	echo "$UDC" > $G/UDC && echo " usb    : gadget bound (NCM + ACM)"
 fi
 
+# The USB D+/D- lines go through the S2MU004 MUIC; make sure it routes them to
+# the SoC (a5-diag returns 10 if it had to change the switch), then re-attach.
+a5-diag muic
+if [ $? -eq 10 ] && [ -n "$UDC" ]; then
+	echo "" > $G/UDC; sleep 1; echo "$UDC" > $G/UDC
+	echo " usb    : gadget re-attached after MUIC switch"
+fi
+sleep 2
+a5-diag usbregs
+
 if ifconfig usb0 172.16.42.1 netmask 255.255.255.0 up 2>/dev/null; then
 	touch /tmp/udhcpd.leases
 	udhcpd /etc/udhcpd.conf
@@ -78,7 +88,7 @@ fi
 
 # serial shell on the ACM port, respawned
 if [ -e /dev/ttyGS0 ]; then
-	( while true; do setsid cttyhack sh -l </dev/ttyGS0 >/dev/ttyGS0 2>&1; sleep 1; done ) &
+	( while true; do setsid -c sh -l </dev/ttyGS0 >/dev/ttyGS0 2>&1; sleep 1; done ) &
 	echo " serial : shell on the PC's /dev/ttyACM0"
 fi
 

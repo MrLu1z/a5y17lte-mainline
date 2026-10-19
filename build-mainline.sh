@@ -78,6 +78,6 @@ python3 "$ROOT/tools/mkbootimg_v0.py" pack \
 	--kernel "$B/u-boot/u-boot.bin" --ramdisk "$B/a5y17lte.fit" \
 	--base 0x40000000 --kernel_offset 0x00000000 --ramdisk_offset 0x01000000 \
 	--tags_offset 0x00000100 --second_offset 0x00f00000 --pagesize 2048 \
-	-o "$OUT/a5y17lte-mainline-m4b-boot.img"
-python3 "$ROOT/tools/mkbootimg_v0.py" info "$OUT/a5y17lte-mainline-m4b-boot.img"
-( cd "$OUT" && sha256sum a5y17lte-mainline-m4b-boot.img | tee a5y17lte-mainline-m4b-boot.img.sha256 )
+	-o "$OUT/a5y17lte-mainline-m4c-boot.img"
+python3 "$ROOT/tools/mkbootimg_v0.py" info "$OUT/a5y17lte-mainline-m4c-boot.img"
+( cd "$OUT" && sha256sum a5y17lte-mainline-m4c-boot.img | tee a5y17lte-mainline-m4c-boot.img.sha256 )

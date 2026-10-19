@@ -640,6 +640,37 @@ Photo: `evidence/hw-mainline-m4b-usb-2026-10-19.jpg`.
 
 **Pending:** the PC side (lsusb, DHCP, SSH).
 
+### 18c. PC side of M4b: no enumeration; M4c built (2026-10-19 03:13)
+
+**What the PC saw:**
+
+- PC `lsusb`: only its own root hubs.
+- `sudo dmesg -w` while replugging the cable with M4b running: **no USB events at all**, not even an enumeration error.
+- The same PC port and cable enumerated TWRP shortly before (`18d1:4ee2 SAMSUNG_Android` on usb 3-5).
+
+So the PC never sees the D+ pull-up.
+
+**Suspect: the S2MU004 MUIC.** From Samsung `exynos7880-a5y17lte_common.dtsi`:
+
+- `s2mu004@3d` on `i2c@13870000`, pins `gpc1-1`/`gpc1-0`, `muic` enabled.
+- The MUIC switches D+/D- between OPEN, USB and UART through `SW_CTRL` (0xCA).
+  - Fields `[7:5]` DM and `[4:2]` DP: 1 = USB, 2 = UART.
+- `CTRL1` (0xC7) bit 2 selects 1 = auto or 0 = manual switching (`set_manual_sw`).
+- Samsung's driver routes to USB with `com_to_usb()`.
+- S-Boot's MUIC state is unknown.
+
+**M4c changes:**
+
+- The TOP pin controller is added (SPI 438, 19 banks including the 7880-only `gpd5`).
+- An `i2c-gpio` bus is placed on gpc1-0 (SDA) and gpc1-1 (SCL), since the 7880 CMU_PERI clock for the hardware I2C isn't supported yet.
+- `a5-diag muic` reads REV_ID, ADC, DEVICE_TYPE1–3, CHG_TYPE, CTRL1 and SW_CTRL.
+  - If D+/D- isn't on USB, it sets manual mode with DM = DP = USB, and `/init` re-attaches the gadget.
+- `a5-diag usbregs` shows:
+  - the UDC state
+  - DWC3 GCTL/GSTS/GUSB2PHYCFG/DCFG/DCTL/DSTS
+  - PHY LINKSYSTEM/UTMI/CLKRST/HSPHYCTRL/PLLTUNE
+- The serial shell now uses `setsid -c` on ttyGS0 instead of cttyhack.
+
 ## Open items
 
 1. ~~Phone test of milestone 1~~: passed in full (section 15).
