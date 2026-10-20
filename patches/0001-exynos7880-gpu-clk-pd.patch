@@ -1,0 +1,268 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: MrLu1z <273601560+MrLu1z@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 00:00:00 -0300
+Subject: [PATCH 1/2] clk: samsung: add Exynos7880 CMU_G3D driver
+
+Add the CMU_G3D clock driver for Exynos7880. The register offsets are
+identical to Exynos7870 (confirmed via S5E7880-cmusfr.h from the vendor
+kernel), so the driver is adapted from clk-exynos7870.c.
+
+The driver exposes the clocks needed by the Mali-T830 GPU node:
+- CLK_GOUT_G3D_CLK (core)
+- CLK_GOUT_G3D_ASYNCS_D0_CLK (bus)
+
+NOT TESTED on hardware.
+
+Signed-off-by: MrLu1z <273601560+MrLu1z@users.noreply.github.com>
+---
+ drivers/clk/samsung/clk-exynos7880.c               | 160 +++++++++++++++++++++
+ include/dt-bindings/clock/samsung,exynos7880-cmu.h |  24 ++++
+ 2 files changed, 184 insertions(+)
+
+diff --git a/drivers/clk/samsung/clk-exynos7880.c b/drivers/clk/samsung/clk-exynos7880.c
+new file mode 100644
+index 000000000000..111111111111
+--- /dev/null
++++ b/drivers/clk/samsung/clk-exynos7880.c
+@@ -0,0 +1,160 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Samsung Exynos7880 clock driver (CMU_G3D)
++ *
++ * Based on clk-exynos7870.c by Kaustabh Chakraborty.
++ * Offsets from S5E7880-cmusfr.h (vendor kernel).
++ */
++
++#include <linux/clk-provider.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++
++#include <dt-bindings/clock/samsung,exynos7880-cmu.h>
++
++#include "clk.h"
++#include "clk-exynos-arm64.h"
++
++/* Register offsets for CMU_G3D (0x11460000) */
++#define PLL_LOCKTIME_G3D_PLL		0x0000
++#define PLL_CON0_G3D_PLL		0x0100
++#define CLK_CON_GAT_G3D_MUX_PLL		0x0200
++#define CLK_CON_GAT_G3D_MUX_PLL_CON	0x0200
++#define CLK_CON_GAT_G3D_MUX_SWITCH_USER	0x0204
++#define CLK_CON_MUX_G3D_SWITCH_USER	0x0204
++#define CLK_CON_GAT_G3D_MUX		0x0208
++#define CLK_CON_MUX_G3D			0x0208
++#define CLK_CON_DIV_G3D_BUS		0x0400
++#define CLK_CON_DIV_G3D_APB		0x0404
++#define CLK_CON_GAT_G3D_ASYNCS_D0_CLK	0x0804
++#define CLK_CON_GAT_G3D_ASYNC_PCLKM	0x0804
++#define CLK_CON_GAT_G3D_CLK		0x0804
++#define CLK_CON_GAT_G3D_PPMU_ACLK	0x0804
++#define CLK_CON_GAT_G3D_QE_ACLK		0x0804
++#define CLK_CON_GAT_G3D_PPMU_PCLK	0x0808
++#define CLK_CON_GAT_G3D_QE_PCLK		0x0808
++#define CLK_CON_GAT_G3D_SYSREG_PCLK	0x0808
++
++static const unsigned long g3d_clk_regs[] __initconst = {
++	PLL_LOCKTIME_G3D_PLL,
++	PLL_CON0_G3D_PLL,
++	CLK_CON_GAT_G3D_MUX_PLL,
++	CLK_CON_GAT_G3D_MUX_PLL_CON,
++	CLK_CON_GAT_G3D_MUX_SWITCH_USER,
++	CLK_CON_MUX_G3D_SWITCH_USER,
++	CLK_CON_GAT_G3D_MUX,
++	CLK_CON_MUX_G3D,
++	CLK_CON_DIV_G3D_BUS,
++	CLK_CON_DIV_G3D_APB,
++	CLK_CON_GAT_G3D_ASYNCS_D0_CLK,
++	CLK_CON_GAT_G3D_ASYNC_PCLKM,
++	CLK_CON_GAT_G3D_CLK,
++	CLK_CON_GAT_G3D_PPMU_ACLK,
++	CLK_CON_GAT_G3D_QE_ACLK,
++	CLK_CON_GAT_G3D_PPMU_PCLK,
++	CLK_CON_GAT_G3D_QE_PCLK,
++	CLK_CON_GAT_G3D_SYSREG_PCLK,
++};
++
++static const struct samsung_pll_clock g3d_pll_clks[] __initconst = {
++	PLL(pll_1417x, CLK_FOUT_G3D_PLL, "fout_g3d_pll", "oscclk",
++	    PLL_LOCKTIME_G3D_PLL, PLL_CON0_G3D_PLL, NULL),
++};
++
++PNAME(mout_g3d_switch_user_p)	= { "oscclk", "gout_mif_cmu_g3d_switch" };
++PNAME(mout_g3d_p)		= { "gout_g3d_mux_pll_con",
++				    "gout_g3d_mux_switch_user" };
++
++static const struct samsung_mux_clock g3d_mux_clks[] __initconst = {
++	MUX(CLK_MOUT_G3D_SWITCH_USER, "mout_g3d_switch_user",
++	    mout_g3d_switch_user_p, CLK_CON_MUX_G3D_SWITCH_USER, 12, 1),
++	MUX(CLK_MOUT_G3D, "mout_g3d", mout_g3d_p, CLK_CON_MUX_G3D, 12, 1),
++};
++
++static const struct samsung_div_clock g3d_div_clks[] __initconst = {
++	DIV(CLK_DOUT_G3D_APB, "dout_g3d_apb", "dout_g3d_bus",
++	    CLK_CON_DIV_G3D_APB, 0, 3),
++	DIV(CLK_DOUT_G3D_BUS, "dout_g3d_bus", "gout_g3d_mux",
++	    CLK_CON_DIV_G3D_BUS, 0, 3),
++};
++
++static const struct samsung_gate_clock g3d_gate_clks[] __initconst = {
++	GATE(CLK_GOUT_G3D_ASYNCS_D0_CLK, "gout_g3d_asyncs_d0_clk",
++	     "dout_g3d_bus", CLK_CON_GAT_G3D_ASYNCS_D0_CLK, 1,
++	     CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_ASYNC_PCLKM, "gout_g3d_async_pclkm", "dout_g3d_bus",
++	     CLK_CON_GAT_G3D_ASYNC_PCLKM, 0, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_CLK, "gout_g3d_clk", "dout_g3d_bus",
++	     CLK_CON_GAT_G3D_CLK, 6, CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_PPMU_ACLK, "gout_g3d_ppmu_aclk", "dout_g3d_bus",
++	     CLK_CON_GAT_G3D_PPMU_ACLK, 7, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_PPMU_PCLK, "gout_g3d_ppmu_pclk", "dout_g3d_apb",
++	     CLK_CON_GAT_G3D_PPMU_PCLK, 4, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_QE_ACLK, "gout_g3d_qe_aclk", "dout_g3d_bus",
++	     CLK_CON_GAT_G3D_QE_ACLK, 8, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_QE_PCLK, "gout_g3d_qe_pclk", "dout_g3d_apb",
++	     CLK_CON_GAT_G3D_QE_PCLK, 5, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_SYSREG_PCLK, "gout_g3d_sysreg_pclk", "dout_g3d_apb",
++	     CLK_CON_GAT_G3D_SYSREG_PCLK, 6, CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_MUX_SWITCH_USER, "gout_g3d_mux_switch_user",
++	     "mout_g3d_switch_user", CLK_CON_GAT_G3D_MUX_SWITCH_USER, 21,
++	     CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_MUX, "gout_g3d_mux", "mout_g3d",
++	     CLK_CON_GAT_G3D_MUX, 21, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_MUX_PLL, "gout_g3d_mux_pll", "gout_g3d_mux_pll_con",
++	     CLK_CON_GAT_G3D_MUX_PLL, 21, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_G3D_MUX_PLL_CON, "gout_g3d_mux_pll_con", "fout_g3d_pll",
++	     CLK_CON_GAT_G3D_MUX_PLL_CON, 12, CLK_IS_CRITICAL |
++	     CLK_SET_RATE_PARENT, 0),
++};
++
++static const struct samsung_cmu_info g3d_cmu_info __initconst = {
++	.pll_clks		= g3d_pll_clks,
++	.nr_pll_clks		= ARRAY_SIZE(g3d_pll_clks),
++	.mux_clks		= g3d_mux_clks,
++	.nr_mux_clks		= ARRAY_SIZE(g3d_mux_clks),
++	.div_clks		= g3d_div_clks,
++	.nr_div_clks		= ARRAY_SIZE(g3d_div_clks),
++	.gate_clks		= g3d_gate_clks,
++	.nr_gate_clks		= ARRAY_SIZE(g3d_gate_clks),
++	.clk_regs		= g3d_clk_regs,
++	.nr_clk_regs		= ARRAY_SIZE(g3d_clk_regs),
++	.nr_clk_ids		= G3D_NR_CLK,
++};
++
++static int __init exynos7880_cmu_probe(struct platform_device *pdev)
++{
++	const struct samsung_cmu_info *info;
++	struct device *dev = &pdev->dev;
++
++	info = of_device_get_match_data(dev);
++	exynos_arm64_register_cmu(dev, dev->of_node, info);
++
++	return 0;
++}
++
++static const struct of_device_id exynos7880_cmu_of_match[] = {
++	{
++		.compatible = "samsung,exynos7880-cmu-g3d",
++		.data = &g3d_cmu_info,
++	}, {
++	},
++};
++
++static struct platform_driver exynos7880_cmu_driver __refdata = {
++	.driver = {
++		.name = "exynos7880-cmu",
++		.of_match_table = exynos7880_cmu_of_match,
++		.suppress_bind_attrs = true,
++	},
++	.probe = exynos7880_cmu_probe,
++};
++
++static int __init exynos7880_cmu_init(void)
++{
++	return platform_driver_register(&exynos7880_cmu_driver);
++}
++core_initcall(exynos7880_cmu_init);
+diff --git a/include/dt-bindings/clock/samsung,exynos7880-cmu.h b/include/dt-bindings/clock/samsung,exynos7880-cmu.h
+new file mode 100644
+index 000000000000..222222222222
+--- /dev/null
++++ b/include/dt-bindings/clock/samsung,exynos7880-cmu.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
++#ifndef _DT_BINDINGS_CLOCK_EXYNOS7880_H
++#define _DT_BINDINGS_CLOCK_EXYNOS7880_H
++
++/* CMU_G3D */
++#define CLK_DOUT_G3D_APB		1
++#define CLK_DOUT_G3D_BUS		2
++#define CLK_FOUT_G3D_PLL		3
++#define CLK_GOUT_G3D_ASYNCS_D0_CLK	4
++#define CLK_GOUT_G3D_ASYNC_PCLKM	5
++#define CLK_GOUT_G3D_CLK		6
++#define CLK_GOUT_G3D_MUX		7
++#define CLK_GOUT_G3D_MUX_PLL		8
++#define CLK_GOUT_G3D_MUX_PLL_CON	9
++#define CLK_GOUT_G3D_MUX_SWITCH_USER	10
++#define CLK_GOUT_G3D_PPMU_ACLK		11
++#define CLK_GOUT_G3D_PPMU_PCLK		12
++#define CLK_GOUT_G3D_QE_ACLK		13
++#define CLK_GOUT_G3D_QE_PCLK		14
++#define CLK_GOUT_G3D_SYSREG_PCLK	15
++#define CLK_MOUT_G3D			16
++#define CLK_MOUT_G3D_SWITCH_USER	17
++#define G3D_NR_CLK			18
++
++#endif /* _DT_BINDINGS_CLOCK_EXYNOS7880_H */
+-- 
+2.43.0
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: MrLu1z <273601560+MrLu1z@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 00:00:01 -0300
+Subject: [PATCH 2/2] pmdomain: samsung: add Exynos7880 pd_g3d
+
+Add the G3D power domain for Exynos7880. The local_pwr_cfg value
+(0x7) is a placeholder based on Exynos4210 and must be confirmed
+in S5E7880-pmusfr.h.
+
+NOT TESTED on hardware.
+
+Signed-off-by: MrLu1z <273601560+MrLu1z@users.noreply.github.com>
+---
+ drivers/pmdomain/samsung/exynos-pm-domains.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/pmdomain/samsung/exynos-pm-domains.c b/drivers/pmdomain/samsung/exynos-pm-domains.c
+index 000000000000..333333333333 100644
+--- a/drivers/pmdomain/samsung/exynos-pm-domains.c
++++ b/drivers/pmdomain/samsung/exynos-pm-domains.c
+@@ -68,6 +68,10 @@ static const struct exynos_pm_domain_config exynos5433_cfg = {
+ 	.local_pwr_cfg		= 0xf,
+ };
+ 
++static const struct exynos_pm_domain_config exynos7880_cfg = {
++	.local_pwr_cfg		= 0x7, /* TODO: confirm in S5E7880-pmusfr.h */
++};
++
+ static const struct of_device_id exynos_pm_domain_of_match[] = {
+ 	{
+ 		.compatible = "samsung,exynos4210-pd",
+@@ -76,6 +80,9 @@ static const struct of_device_id exynos_pm_domain_of_match[] = {
+ 	}, {
+ 		.compatible = "samsung,exynos5433-pd",
+ 		.data = &exynos5433_cfg,
++	}, {
++		.compatible = "samsung,exynos7880-pd",
++		.data = &exynos7880_cfg,
+ 	},
+ 	{ },
+ };
+-- 
+2.43.0
