@@ -160,15 +160,16 @@
 	};
 
 	/*
-	 * TEMPORARY: GPU clock via fixed-clock (962 MHz max).
-	 * The vendor DTS does not expose a usable clock name for Panfrost;
-	 * a real CMU_G3D driver does not exist upstream yet.
+	 * TEMPORARY: CMU_MIF not implemented yet for 7880, but CMU_G3D
+	 * needs the "g3d_switch" clock from it. Use a fixed-clock for now.
+	 * Frequency: BUS_PLL/2 / 2 = 399.75 MHz (same as mmc0 CIU source).
+	 * Replace with real CMU_MIF clock when available.
 	 */
-	clk_gpu: clock-gpu {
+	clk_mif_g3d_switch: clock-mif-g3d-switch {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <962000000>;
-		clock-output-names = "gpu_fixed";
+		clock-frequency = <399750000>;
+		clock-output-names = "gout_mif_cmu_g3d_switch";
 	};
 
 	/* [D] psci: method smc, cpu_suspend 0xC4000001 (same IDs as [M]) */
@@ -187,10 +188,31 @@
 		#size-cells = <1>;
 
 		/*
+		 * [D] vendor DTS: pd_g3d@106b4000, cal_id 0xB1380001.
+		 * Driver: exynos-pm-domains.c (local_pwr_cfg a confirmar).
+		 */
+		pd_g3d: power-domain@106b4000 {
+			compatible = "samsung,exynos7880-pd";
+			reg = <0x106b4000 0x20>;
+			#power-domain-cells = <0>;
+		};
+
+		/*
+		 * [D] vendor DTS: CMU_G3D @ 0x11460000.
+		 * Driver: clk-exynos7880.c (adapted from Exynos7870).
+		 * The "switch" parent comes from CMU_MIF (fixed-clock for now).
+		 */
+		cmu_g3d: clock-controller@11460000 {
+			compatible = "samsung,exynos7880-cmu-g3d";
+			reg = <0x11460000 0x1000>;
+			#clock-cells = <1>;
+			clock-names = "oscclk", "switch";
+			clocks = <&oscclk>, <&clk_mif_g3d_switch>;
+		};
+
+		/*
 		 * [D] vendor DTS: Mali-T830 MP3 (Midgard v5), base 0x11400000,
 		 * IRQs 282/283/281, power domain pd_g3d.
-		 * Clock via temporary fixed-clock (962 MHz) until a CMU_G3D
-		 * driver exists upstream.
 		 * NOT TESTED on hardware.
 		 */
 		gpu: gpu@11400000 {
@@ -200,9 +222,10 @@
 				     <GIC_SPI 283 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 281 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "job", "mmu", "gpu";
-			clocks = <&clk_gpu>;
-			clock-names = "clk_mali";
-			/* power-domains = <&pd_g3d>; -- no GenPD driver yet */
+			clocks = <&cmu_g3d CLK_GOUT_G3D_CLK>,
+				 <&cmu_g3d CLK_GOUT_G3D_ASYNCS_D0_CLK>;
+			clock-names = "core", "bus";
+			power-domains = <&pd_g3d>;
 			status = "disabled";
 		};
 
