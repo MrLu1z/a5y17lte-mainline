@@ -1,5 +1,7 @@
 # a5y17lte-mainline-exynos7880-gpu
 
+> **Archived (EOL).** Development paused: no hardware to test the remaining GPU work. Code is complete and builds cleanly on v7.2.0; M1–M5a verified on device (`EVIDENCE.md`). Forks welcome.
+
 > **Note:** this is a fork of [`android-a5y7lte/xnu-a5y17lte`](https://github.com/android-a5y7lte/xnu-a5y17lte) that adds the Mali-T830 GPU node, the `CMU_G3D` clock driver, and the `pd_g3d` power domain for the Exynos 7880. **Not tested on hardware.** The mainline kernel boots (M1–M5a passed on the real phone, see [`EVIDENCE.md`](EVIDENCE.md)), but the GPU has not been probed on a device yet.
 
 > For setup, dependencies, and flashing instructions, see the [upstream README](https://github.com/android-a5y7lte/xnu-a5y17lte#readme). This fork only documents what it adds on top.
@@ -29,9 +31,9 @@ The repo name is historical. The earlier XNU/iOS investigation is closed, and th
   - eMMC still read-only. Hold Power for 3 s to reboot into TWRP.
 - **Milestone 5a (distro kernel config, SYSTEM probe): passed on the phone (2026-10-19).** Every eMMC partition is now really read-only (EVIDENCE 19). SYSTEM is `mmcblk0p19`, 4848 MiB. Latest image: `out/a5y17lte-mainline-m5a-boot.img`. Builds are reproducible.
 
-## GPU (WIP, untested)
+## GPU (implemented, untested on hardware)
 
-The `gpu-test` branch adds a Mali-T830 MP3 node for the Exynos 7880. It is **not tested on hardware** — the maintainer's device is currently unavailable.
+The `exynos7880-gpu` branch adds a Mali-T830 MP3 node for the Exynos 7880. It is **not tested on hardware** — the maintainer's device is currently unavailable.
 
 What this branch adds:
 
