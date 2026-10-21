@@ -11,6 +11,7 @@ options="!check !archcheck"
 depends="
 	linux-postmarketos-exynos7880
 	postmarketos-base
+ firmware-samsung-universal7880
 "
 makedepends="devicepkg-dev"
 subpackages="$pkgname-openrc:openrc"
