@@ -1,68 +1,84 @@
-# a5y17lte: mainline Linux on the Galaxy A5 (2017)
+# a5y17lte-mainline-gputest
 
-> **Note:** this repo was unarchived to improve GPU support and apply
-> some fixes. The `gpu-test` branch has the WIP Mali-T830 node (untested).
-> See the latest pre-release for the build.
+> **Note:** this is a fork of [`android-a5y7lte/xnu-a5y17lte`](https://github.com/android-a5y7lte/xnu-a5y17lte) that adds the Mali-T830 GPU node, the `CMU_G3D` clock driver, and the `pd_g3d` power domain for the Exynos 7880. **Not tested on hardware.** The mainline kernel boots (M1–M5a passed on the real phone, see [`EVIDENCE.md`](EVIDENCE.md)), but the GPU has not been probed on a device yet.
 
 Bringing **mainline Linux (and later postmarketOS)** to the Samsung Galaxy A5 2017 (a5y17lte, Exynos 7880). The boot chain is:
 
-Samsung S-Boot → mainline **U-Boot** (`a5y17lte_defconfig`) → **Linux v7.2** with a new `exynos7880-a5y17lte` device tree.
-
-This project is separate from the Sailfish work (`~/hadk`, `~/sfos`) and never touches it.
+Samsung S-Boot → mainline **U-Boot** (`a5y17lte_defconfig`) → **Linux** with a new `exynos7880-a5y17lte` device tree.
 
 The repo name is historical. The earlier XNU/iOS investigation is closed, and the step 1 uniLoader hardware probe is kept for history. All confirmed hardware facts are in `EVIDENCE.md`.
 
 ## Status
 
 - **Milestone 1: passed on the real phone (2026-10-18).**
-  - Linux 7.2 boots with all 8 cores and 2.6 GB of RAM.
+  - Linux boots with all 8 cores and 2.6 GB of RAM.
   - The console shows on screen, and the panel refreshes by itself.
   - Reboot to TWRP works.
-  - See EVIDENCE.md section 15.
+  - See `EVIDENCE.md` section 15.
 
 - **Milestone 2 (keys): passed on the phone (2026-10-19).** All four keys work; holding Power reboots into TWRP.
 - **Milestone 3 (eMMC, read-only): passed on the phone (2026-10-19).**
   - 8-bit DDR52 at 82 MiB/s; all 25 partitions read.
-  - Needed kernel patch 0004: the SMU must grant SECURE_READ on the Exynos7880.
+  - Needed kernel patch `0004`: the SMU must grant `SECURE_READ` on the Exynos7880.
   - Latest image: `out/a5y17lte-mainline-m3d-boot.img`.
 
-- **Milestone 4 (USB networking): passed on the phone (2026-10-19).** USB NCM + ACM gadget after switching the S2MU004 MUIC to USB; PC gets 172.16.42.2 by DHCP; `ssh root@172.16.42.1` (blank password) and telnet work. `scp -O` works with M4e (latest): `out/a5y17lte-mainline-m4e-boot.img`.
-  - Phone at 172.16.42.1; `ssh root@172.16.42.1` (no password), `telnet 172.16.42.1`, or serial on `/dev/ttyACM0`.
+- **Milestone 4 (USB networking): passed on the phone (2026-10-19).** USB NCM + ACM gadget after switching the S2MU004 MUIC to USB; PC gets `172.16.42.2` by DHCP; `ssh root@172.16.42.1` (blank password) and telnet work. `scp -O` works with M4e (latest): `out/a5y17lte-mainline-m4e-boot.img`.
+  - Phone at `172.16.42.1`; `ssh root@172.16.42.1` (no password), `telnet 172.16.42.1`, or serial on `/dev/ttyACM0`.
   - eMMC still read-only. Hold Power for 3 s to reboot into TWRP.
-- **Milestone 5a (distro kernel config, SYSTEM probe): passed on the phone (2026-10-19).** Every eMMC partition is now really read-only (EVIDENCE 19). SYSTEM is mmcblk0p19, 4848 MiB. Latest image: `out/a5y17lte-mainline-m5a-boot.img`. Builds are reproducible.
+- **Milestone 5a (distro kernel config, SYSTEM probe): passed on the phone (2026-10-19).** Every eMMC partition is now really read-only (EVIDENCE 19). SYSTEM is `mmcblk0p19`, 4848 MiB. Latest image: `out/a5y17lte-mainline-m5a-boot.img`. Builds are reproducible.
 
-## Mainline milestone 1: boot to a console on screen
+## GPU (WIP, untested)
+
+The `gpu-test` branch adds a Mali-T830 MP3 node for the Exynos 7880. It is **not tested on hardware** — the maintainer's device is currently unavailable.
+
+What this branch adds:
+
+### Kernel — `patches/0001-exynos7880-gpu-clk-pd.patch`
+
+- **`clk: samsung`**: add Exynos7880 `CMU_G3D` driver — adapted from `clk-exynos7870.c`, same register offsets per `S5E7880-cmusfr.h`.
+- **`pmdomain: samsung`**: add Exynos7880 `pd_g3d` — `samsung,exynos7880-pd` compatible, `local_pwr_cfg = 0x7` *(placeholder, confirm in `S5E7880-pmusfr.h`)*.
+
+### Device Tree — `mainline/dts/exynos7880.dtsi`
+
+- **`gpu@11400000`**: `compatible = "arm,mali-t830", "arm,mali-midgard"`, IRQs `282`/`283`/`281` (job/mmu/gpu), clocks from `cmu_g3d` (`"core"`, `"bus"`), `power-domains = <&pd_g3d>`.
+- **`cmu_g3d: clock-controller@11460000`**: `samsung,exynos7880-cmu-g3d`, parents `oscclk` and `g3d_switch` (fixed-clock at 399.75 MHz until `CMU_MIF` exists).
+- **`pd_g3d: power-domain@106b4000`**: `samsung,exynos7880-pd`.
+
+### Config — `mainline/config/a5y17lte.config`
+
+- `CONFIG_DRM=y`, `CONFIG_DRM_PANFROST=y`, `CONFIG_DRM_GEM_SHMEM_HELPER=y`.
+- `CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND=y` — without it, Panfrost probe fails with error `-22`.
+
+### postmarketOS — `pmos/` and `build-pmos.sh`
+
+- **`device-samsung-a5y17lte/APKBUILD`**: added `firmware-samsung-universal7880` to `depends` (Wi-Fi). The `pmbootstrap` cache may need a pkgrel bump to actually install it.
+- **`build-pmos.sh`**: builds the rootfs with the mainline kernel and the patches above.
+
+## How to build
+
+Same as upstream:
 
 ```bash
-sudo apt install git clang lld llvm bison bc cmake build-essential python3 curl
-./setup.sh            # pinned sources + verified xPack GNU toolchain
-./build-mainline.sh   # builds userspace on first run; -> out/a5y17lte-mainline-mN-boot.img
+./setup.sh
+./build-mainline.sh   # -> out/a5y17lte-mainline-mN-boot.img
+./build-pmos.sh       # -> build/pmos/samsung-a5y17lte-root.img
 ```
 
-| Path | What it is |
-|---|---|
-| `mainline/dts/` | `exynos7880.dtsi`, `exynos7880-a5y17lte.dts`; every value cited |
-| `mainline/config/a5y17lte-m1.config` | Minimal kernel config fragment |
-| `mainline/init/init.c` | nolibc init: info screen, panel refresh test, reboot to recovery |
-| `mainline/a5y17lte.its`, `mainline/boot.cmd` | FIT payload and U-Boot boot script |
-| `tools/emulate_uboot.py` | Runs the boot image on an emulated A53 up to the Linux entry |
+The kernel patches are **not** applied by `setup.sh`; apply them manually:
 
-### Flash and test (TWRP)
+```bash
+cd upstream/linux
+git am ../../patches/0001-exynos7880-gpu-clk-pd.patch
+```
 
-1. In TWRP, back up **Boot** if you haven't already. The step 1 backup works too.
-2. Run `adb push a5y17lte-mainline-m1-boot.img /sdcard/`, then go to Install → Install Image → **Boot**, and Reboot → System.
-3. Expect the Samsung logo for a while: U-Boot has no display output, and Linux boots underneath.
-4. Watch the screen:
+## What is missing for a working GPU
 
-| What you see | Meaning |
-|---|---|
-| Linux text with **t =** counting **before 15** | Linux boots, and the panel refreshes by itself (TE trigger). |
-| Text appears only **at t = 15** ("PHASE B") | Linux boots; the software refresh is needed. |
-| Phone reboots **into TWRP** at about t = 180 | The reboot-mode node works. |
-| Logo stays and the phone **reboots by itself** after about 20–40 s | The kernel panicked (`panic=20`); the reboot path works. |
-| Logo stays forever | Linux or U-Boot hung before init. |
+1. **Test on hardware** — `dmesg | grep -iE "panfrost|exynos7880-cmu|pd_g3d"`. If it fails, the likely culprits are `local_pwr_cfg` (`0x7`) and the `g3d_switch` fixed-clock.
+2. **Mesa (userspace)** — compile with `-Dgallium-drivers=panfrost` and install it in the rootfs. The kernel alone does not render.
+3. **`vdd_g3d` regulator** — the S2MPU05 driver is in Linux 6.15+, but the board DTS still needs the regulator node.
+4. **Wi-Fi firmware** — `firmware-samsung-universal7880` is in `depends`, but the `pmbootstrap` cache may need a pkgrel bump to install it.
 
-To get back: hold Vol Down + Power, then Vol Up + Home + Power for TWRP, and restore the Boot backup.
+Everything else (display, keys, eMMC, USB networking, postmarketOS rootfs) is upstream and works as described in the original README.
 
 ## Layout
 
@@ -70,88 +86,20 @@ To get back: hold Vol Down + Power, then Vol Up + Home + Power for TWRP, and res
 |---|---|
 | `EVIDENCE.md` | Every hardware/source claim, with file and line |
 | `setup.sh` | Recreates all source trees at pinned revisions |
-| `build-step1.sh` | Builds uniLoader and packs `out/a5y17lte-step1b-boot.img` |
-| `patches/` | The a5y17lte uniLoader changes (applied by `setup.sh`) |
+| `build-mainline.sh` | Builds the mainline kernel and packs the boot image |
+| `build-pmos.sh` | Builds the postmarketOS rootfs with the mainline kernel |
+| `patches/` | Kernel and uniLoader patches (applied manually for the GPU) |
+| `mainline/dts/` | `exynos7880.dtsi`, `exynos7880-a5y17lte.dts` |
+| `mainline/config/` | Kernel config fragments (incl. `a5y17lte.config`) |
+| `mainline/init/` | nolibc init: info screen, panel refresh test, reboot to recovery |
+| `mainline/a5y17lte.its`, `mainline/boot.cmd` | FIT payload and U-Boot boot script |
+| `tools/emulate_uboot.py` | Runs the boot image on an emulated A53 up to the Linux entry |
 | `tools/mkbootimg_v0.py` | Boot image packer/inspector (`pack` / `info`) |
-| `tools/emulate_step1.py`, `tools/run-emulator.sh` | Runs the boot image on an emulated Cortex-A53 and saves the screen as PNG |
-| `uniLoader/` | Fork, branch `a5y17lte` (created by `setup.sh`) |
-| `upstream/` | Pristine uniLoader, XNU 8792.81.2, device DTS, Unicorn |
 
-## How the pieces connect
+## Credits
 
-```
-setup.sh ──► upstream/uniLoader @bdc0f6d ──(+ patches/*.patch)──► uniLoader/ (branch a5y17lte)
-build-step1.sh ──► make a5y17lte_defconfig ──► uniLoader/uniLoader (raw binary)
-               └─► tools/mkbootimg_v0.py pack ──► out/a5y17lte-step1b-boot.img (+ .sha256)
-tools/run-emulator.sh ──► loads that same boot.img ──► out/step1-screen.png
-```
+Fork of [`android-a5y7lte/xnu-a5y17lte`](https://github.com/android-a5y7lte/xnu-a5y17lte). Original mainline/uniLoader work by the upstream authors.
 
-Inside the uniLoader patch:
+## License
 
-```
-configs/a5y17lte_defconfig ─► CONFIG_EXYNOS_7880 ─► soc/Kconfig ─► soc/Makefile ─► soc/exynos/exynos7880.c
-                           └► CONFIG_SAMSUNG_A5Y17LTE ─► board/Kconfig ─► board/Makefile ─► board/samsung/board-a5y17lte.c
-                                                                                             └► include/soc/exynos7880.h
-```
-
-## Build on your PC (Linux Mint)
-
-```bash
-sudo apt install git clang lld llvm cmake build-essential python3
-./setup.sh
-./build-step1.sh
-tools/run-emulator.sh        # optional: emulated screen at out/step1-screen.png
-```
-
-## Step 1: flash and test (TWRP)
-
-1. **Back up the current boot partition.** In TWRP, go to Backup, tick **Boot** only, and swipe. This holds your Sailfish boot image.
-2. Copy `a5y17lte-step1b-boot.img` to the phone.
-3. In TWRP, go to Install, tap **Install Image**, pick the file, and choose **Boot**.
-4. Reboot to System.
-5. **Photograph the screen** and send the photo back.
-6. To get back:
-   - Hold **Vol Down + Power** about 7 seconds.
-   - The moment the screen goes black, switch to **Vol Up + Home + Power** to enter TWRP.
-   - Go to Restore, pick your boot backup, and restore it.
-
-Only the boot partition changes, and the backup restores it exactly.
-
-### Reading the result
-
-| What you see | Meaning |
-|---|---|
-| Text and **R G B W** bars in that order | uniLoader runs, framebuffer is 0x67000000, and the format is ARGB8888. Read off `CurrentEL` and the IDMA lines. |
-| Bars in a different colour order | Wrong pixel format. Tell me the order. |
-| Text stops after `reading IDMAn...` | That display block is clock-gated. Still useful; send the photo. |
-| Logo stays, phone **reboots by itself after ~30-40 s** | Code ran; display trigger still wrong. |
-| Logo stays forever, never reboots | S-Boot did not run it or the framebuffer address is wrong. Next try: framebuffer auto-detect build. |
-| "Kernel is not seandroid enforcing" in red at top | Normal warning, ignore it. |
-
-## Status
-
-- Step 1 builds and passes emulation at load addresses 0x40000000, 0x40080000 and 0x40001000.
-- The screen is byte-identical in all three runs.
-- **Step 1b runs on the real phone.** The display, framebuffer and EL1 hand-off are confirmed (EVIDENCE.md section 12).
-
-## GPU (WIP, untested)
-
-The `gpu-test` branch adds a Mali-T830 MP3 node for the Exynos 7880. It is
-**not tested on hardware** — the maintainer's device is currently unavailable.
-
-What the patches do:
-
-- **`dts: exynos7880: add Mali-T830 GPU node (untested)`** — adds
-  `gpu@11400000` to `exynos7880.dtsi`, with `compatible = "arm,mali-t830",
-  "arm,mali-midgard"`, `reg = <0x11400000 0x5000>`, IRQs `282/283/281`
-  (`job`/`mmu`/`gpu`) and a temporary `fixed-clock` at 962 MHz
-  (`clock-names = "clk_mali"`). Values come from the vendor DTS; the clock is
-  provisional because there is no CMU_G3D driver upstream yet.
-  `power-domains` is left commented out (no GenPD driver).
-- **`dts: exynos7880-a5y17lte: enable Mali-T830 GPU`** — sets
-  `status = "okay"` on the GPU node for the a5y17lte board.
-- **`config: enable DRM and Panfrost for Mali-T830`** — adds `CONFIG_DRM=y`,
-  `CONFIG_DRM_PANFROST=y`, `CONFIG_DRM_GEM_SHMEM_HELPER=y`.
-- **`config: add simple_ondemand governor for Panfrost`** — adds
-  `CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND=y`. Without it, Panfrost probe fails
-  with `Couldn't initialize GPU devfreq` and error -22.
+Same as the upstream project.
