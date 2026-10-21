@@ -1,4 +1,4 @@
-# a5y17lte-mainline-gputest
+# a5y17lte-mainline-exynos7880-gpu
 
 > **Note:** this is a fork of [`android-a5y7lte/xnu-a5y17lte`](https://github.com/android-a5y7lte/xnu-a5y17lte) that adds the Mali-T830 GPU node, the `CMU_G3D` clock driver, and the `pd_g3d` power domain for the Exynos 7880. **Not tested on hardware.** The mainline kernel boots (M1–M5a passed on the real phone, see [`EVIDENCE.md`](EVIDENCE.md)), but the GPU has not been probed on a device yet.
 
