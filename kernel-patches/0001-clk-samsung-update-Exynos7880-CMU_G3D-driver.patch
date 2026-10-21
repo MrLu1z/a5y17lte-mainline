@@ -1,0 +1,252 @@
+From 1f1080d94ad9c93a3286e07742862f3b12a1ea0d Mon Sep 17 00:00:00 2001
+From: MrLu1z <273601560+MrLu1z@users.noreply.github.com>
+Date: Wed, 21 Oct 2026 15:34:24 -0300
+Subject: [PATCH] clk: samsung: update Exynos7880 CMU_G3D driver
+
+---
+ drivers/clk/samsung/clk-exynos7880.c | 191 +++++++++++++++++++++------
+ 1 file changed, 151 insertions(+), 40 deletions(-)
+
+diff --git a/drivers/clk/samsung/clk-exynos7880.c b/drivers/clk/samsung/clk-exynos7880.c
+index 4c6145a47..033ad5a82 100644
+--- a/drivers/clk/samsung/clk-exynos7880.c
++++ b/drivers/clk/samsung/clk-exynos7880.c
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Samsung Exynos7880 clock driver (CMU_G3D)
++ * Samsung Exynos7880 clock driver (CMU_MIF0, CMU_MIF1, CMU_G3D)
+  *
+  * Based on clk-exynos7870.c by Kaustabh Chakraborty.
+  * Offsets from S5E7880-cmusfr.h (vendor kernel).
+@@ -15,7 +15,109 @@
+ #include "clk.h"
+ #include "clk-exynos-arm64.h"
+ 
+-/* Register offsets for CMU_G3D (0x11460000) */
++/*
++ * Register offsets for CMU_MIF0 (base in S5E7880-sfrbase.h)
++ */
++#define PLL_LOCKTIME_MIF0_PLL		0x0000
++#define PLL_CON0_MIF0_PLL		0x0100
++#define CLK_CON_MUX_MIF0_PLL		0x0200
++#define CLK_CON_MUX_BUS_PLL_USER_MIF0	0x0204
++#define CLK_CON_MUX_ACLK_MIF0_PLL	0x0208
++#define CLK_CON_MUX_PCLK_MIF0		0x0210
++#define CLK_CON_DIV_PCLK_MIF0		0x0400
++
++static const unsigned long mif0_clk_regs[] __initconst = {
++	PLL_LOCKTIME_MIF0_PLL,
++	PLL_CON0_MIF0_PLL,
++	CLK_CON_MUX_MIF0_PLL,
++	CLK_CON_MUX_BUS_PLL_USER_MIF0,
++	CLK_CON_MUX_ACLK_MIF0_PLL,
++	CLK_CON_MUX_PCLK_MIF0,
++	CLK_CON_DIV_PCLK_MIF0,
++};
++
++static const struct samsung_pll_clock mif0_pll_clks[] __initconst = {
++	PLL(pll_1417x, CLK_FOUT_MIF0_PLL, "fout_mif0_pll", "oscclk",
++	    PLL_LOCKTIME_MIF0_PLL, PLL_CON0_MIF0_PLL, NULL),
++};
++
++PNAME(mout_mif0_pll_p) = { "oscclk", "fout_mif0_pll" };
++
++static const struct samsung_mux_clock mif0_mux_clks[] __initconst = {
++	MUX(CLK_MOUT_MIF0_PLL, "mout_mif0_pll", mout_mif0_pll_p,
++	    CLK_CON_MUX_MIF0_PLL, 12, 1),
++};
++
++static const struct samsung_div_clock mif0_div_clks[] __initconst = {
++	DIV(CLK_DOUT_PCLK_MIF0, "dout_pclk_mif0", "gout_mif0_mux_pclk",
++	    CLK_CON_DIV_PCLK_MIF0, 0, 4),
++};
++
++static const struct samsung_cmu_info mif0_cmu_info __initconst = {
++	.pll_clks		= mif0_pll_clks,
++	.nr_pll_clks		= ARRAY_SIZE(mif0_pll_clks),
++	.mux_clks		= mif0_mux_clks,
++	.nr_mux_clks		= ARRAY_SIZE(mif0_mux_clks),
++	.div_clks		= mif0_div_clks,
++	.nr_div_clks		= ARRAY_SIZE(mif0_div_clks),
++	.clk_regs		= mif0_clk_regs,
++	.nr_clk_regs		= ARRAY_SIZE(mif0_clk_regs),
++	.nr_clk_ids		= MIF0_NR_CLK,
++};
++
++/*
++ * Register offsets for CMU_MIF1 (base in S5E7880-sfrbase.h)
++ */
++#define PLL_LOCKTIME_MIF1_PLL		0x0000
++#define PLL_CON0_MIF1_PLL		0x0100
++#define CLK_CON_MUX_MIF1_PLL		0x0200
++#define CLK_CON_MUX_BUS_PLL_USER_MIF1	0x0204
++#define CLK_CON_MUX_ACLK_MIF1_PLL	0x0208
++#define CLK_CON_MUX_PCLK_MIF1		0x0210
++#define CLK_CON_DIV_PCLK_MIF1		0x0400
++
++static const unsigned long mif1_clk_regs[] __initconst = {
++	PLL_LOCKTIME_MIF1_PLL,
++	PLL_CON0_MIF1_PLL,
++	CLK_CON_MUX_MIF1_PLL,
++	CLK_CON_MUX_BUS_PLL_USER_MIF1,
++	CLK_CON_MUX_ACLK_MIF1_PLL,
++	CLK_CON_MUX_PCLK_MIF1,
++	CLK_CON_DIV_PCLK_MIF1,
++};
++
++static const struct samsung_pll_clock mif1_pll_clks[] __initconst = {
++	PLL(pll_1417x, CLK_FOUT_MIF1_PLL, "fout_mif1_pll", "oscclk",
++	    PLL_LOCKTIME_MIF1_PLL, PLL_CON0_MIF1_PLL, NULL),
++};
++
++PNAME(mout_mif1_pll_p) = { "oscclk", "fout_mif1_pll" };
++
++static const struct samsung_mux_clock mif1_mux_clks[] __initconst = {
++	MUX(CLK_MOUT_MIF1_PLL, "mout_mif1_pll", mout_mif1_pll_p,
++	    CLK_CON_MUX_MIF1_PLL, 12, 1),
++};
++
++static const struct samsung_div_clock mif1_div_clks[] __initconst = {
++	DIV(CLK_DOUT_PCLK_MIF1, "dout_pclk_mif1", "gout_mif1_mux_pclk",
++	    CLK_CON_DIV_PCLK_MIF1, 0, 4),
++};
++
++static const struct samsung_cmu_info mif1_cmu_info __initconst = {
++	.pll_clks		= mif1_pll_clks,
++	.nr_pll_clks		= ARRAY_SIZE(mif1_pll_clks),
++	.mux_clks		= mif1_mux_clks,
++	.nr_mux_clks		= ARRAY_SIZE(mif1_mux_clks),
++	.div_clks		= mif1_div_clks,
++	.nr_div_clks		= ARRAY_SIZE(mif1_div_clks),
++	.clk_regs		= mif1_clk_regs,
++	.nr_clk_regs		= ARRAY_SIZE(mif1_clk_regs),
++	.nr_clk_ids		= MIF1_NR_CLK,
++};
++
++/*
++ * Register offsets for CMU_G3D (0x11460000)
++ */
+ #define PLL_LOCKTIME_G3D_PLL		0x0000
+ #define PLL_CON0_G3D_PLL		0x0100
+ #define CLK_CON_GAT_G3D_MUX_PLL		0x0200
+@@ -61,58 +163,57 @@ static const struct samsung_pll_clock g3d_pll_clks[] __initconst = {
+ 	    PLL_LOCKTIME_G3D_PLL, PLL_CON0_G3D_PLL, NULL),
+ };
+ 
+-PNAME(mout_g3d_switch_user_p)	= { "oscclk", "gout_mif_cmu_g3d_switch" };
+-PNAME(mout_g3d_p)		= { "gout_g3d_mux_pll_con",
+-				    "gout_g3d_mux_switch_user" };
++PNAME(mout_g3d_switch_user_p) = { "oscclk", "gout_mif0_mux_bus_pll_user" };
++PNAME(mout_g3d_p) = { "gout_g3d_mux_pll_con", "gout_g3d_mux_switch_user" };
+ 
+ static const struct samsung_mux_clock g3d_mux_clks[] __initconst = {
+ 	MUX(CLK_MOUT_G3D_SWITCH_USER, "mout_g3d_switch_user",
+ 	    mout_g3d_switch_user_p, CLK_CON_MUX_G3D_SWITCH_USER, 12, 1),
+-	MUX(CLK_MOUT_G3D, "mout_g3d", mout_g3d_p, CLK_CON_MUX_G3D, 12, 1),
++	    MUX(CLK_MOUT_G3D, "mout_g3d", mout_g3d_p, CLK_CON_MUX_G3D, 12, 1),
+ };
+ 
+ static const struct samsung_div_clock g3d_div_clks[] __initconst = {
+ 	DIV(CLK_DOUT_G3D_APB, "dout_g3d_apb", "dout_g3d_bus",
+ 	    CLK_CON_DIV_G3D_APB, 0, 3),
+-	DIV(CLK_DOUT_G3D_BUS, "dout_g3d_bus", "gout_g3d_mux",
+-	    CLK_CON_DIV_G3D_BUS, 0, 3),
++	    DIV(CLK_DOUT_G3D_BUS, "dout_g3d_bus", "gout_g3d_mux",
++		CLK_CON_DIV_G3D_BUS, 0, 3),
+ };
+ 
+ static const struct samsung_gate_clock g3d_gate_clks[] __initconst = {
+ 	GATE(CLK_GOUT_G3D_ASYNCS_D0_CLK, "gout_g3d_asyncs_d0_clk",
+ 	     "dout_g3d_bus", CLK_CON_GAT_G3D_ASYNCS_D0_CLK, 1,
+-	     CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_ASYNC_PCLKM, "gout_g3d_async_pclkm", "dout_g3d_bus",
+-	     CLK_CON_GAT_G3D_ASYNC_PCLKM, 0, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_CLK, "gout_g3d_clk", "dout_g3d_bus",
+-	     CLK_CON_GAT_G3D_CLK, 6, CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_PPMU_ACLK, "gout_g3d_ppmu_aclk", "dout_g3d_bus",
+-	     CLK_CON_GAT_G3D_PPMU_ACLK, 7, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_PPMU_PCLK, "gout_g3d_ppmu_pclk", "dout_g3d_apb",
+-	     CLK_CON_GAT_G3D_PPMU_PCLK, 4, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_QE_ACLK, "gout_g3d_qe_aclk", "dout_g3d_bus",
+-	     CLK_CON_GAT_G3D_QE_ACLK, 8, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_QE_PCLK, "gout_g3d_qe_pclk", "dout_g3d_apb",
+-	     CLK_CON_GAT_G3D_QE_PCLK, 5, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_SYSREG_PCLK, "gout_g3d_sysreg_pclk", "dout_g3d_apb",
+-	     CLK_CON_GAT_G3D_SYSREG_PCLK, 6, CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_MUX_SWITCH_USER, "gout_g3d_mux_switch_user",
+-	     "mout_g3d_switch_user", CLK_CON_GAT_G3D_MUX_SWITCH_USER, 21,
+-	     CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_MUX, "gout_g3d_mux", "mout_g3d",
+-	     CLK_CON_GAT_G3D_MUX, 21, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_MUX_PLL, "gout_g3d_mux_pll", "gout_g3d_mux_pll_con",
+-	     CLK_CON_GAT_G3D_MUX_PLL, 21, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
+-	GATE(CLK_GOUT_G3D_MUX_PLL_CON, "gout_g3d_mux_pll_con", "fout_g3d_pll",
+-	     CLK_CON_GAT_G3D_MUX_PLL_CON, 12, CLK_IS_CRITICAL |
+-	     CLK_SET_RATE_PARENT, 0),
++      CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
++      GATE(CLK_GOUT_G3D_ASYNC_PCLKM, "gout_g3d_async_pclkm", "dout_g3d_bus",
++	   CLK_CON_GAT_G3D_ASYNC_PCLKM, 0, CLK_IS_CRITICAL |
++	   CLK_SET_RATE_PARENT, 0),
++	   GATE(CLK_GOUT_G3D_CLK, "gout_g3d_clk", "dout_g3d_bus",
++		CLK_CON_GAT_G3D_CLK, 6, CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
++		GATE(CLK_GOUT_G3D_PPMU_ACLK, "gout_g3d_ppmu_aclk", "dout_g3d_bus",
++		     CLK_CON_GAT_G3D_PPMU_ACLK, 7, CLK_IS_CRITICAL |
++		     CLK_SET_RATE_PARENT, 0),
++		     GATE(CLK_GOUT_G3D_PPMU_PCLK, "gout_g3d_ppmu_pclk", "dout_g3d_apb",
++			  CLK_CON_GAT_G3D_PPMU_PCLK, 4, CLK_IS_CRITICAL |
++			  CLK_SET_RATE_PARENT, 0),
++			  GATE(CLK_GOUT_G3D_QE_ACLK, "gout_g3d_qe_aclk", "dout_g3d_bus",
++			       CLK_CON_GAT_G3D_QE_ACLK, 8, CLK_IS_CRITICAL |
++			       CLK_SET_RATE_PARENT, 0),
++			       GATE(CLK_GOUT_G3D_QE_PCLK, "gout_g3d_qe_pclk", "dout_g3d_apb",
++				    CLK_CON_GAT_G3D_QE_PCLK, 5, CLK_IS_CRITICAL |
++				    CLK_SET_RATE_PARENT, 0),
++				    GATE(CLK_GOUT_G3D_SYSREG_PCLK, "gout_g3d_sysreg_pclk", "dout_g3d_apb",
++					 CLK_CON_GAT_G3D_SYSREG_PCLK, 6, CLK_SET_RATE_PARENT, 0),
++					 GATE(CLK_GOUT_G3D_MUX_SWITCH_USER, "gout_g3d_mux_switch_user",
++					      "mout_g3d_switch_user", CLK_CON_GAT_G3D_MUX_SWITCH_USER, 21,
++	   CLK_IS_CRITICAL | CLK_SET_RATE_PARENT, 0),
++	   GATE(CLK_GOUT_G3D_MUX, "gout_g3d_mux", "mout_g3d",
++		CLK_CON_GAT_G3D_MUX, 21, CLK_IS_CRITICAL |
++		CLK_SET_RATE_PARENT, 0),
++		GATE(CLK_GOUT_G3D_MUX_PLL, "gout_g3d_mux_pll", "gout_g3d_mux_pll_con",
++		     CLK_CON_GAT_G3D_MUX_PLL, 21, CLK_IS_CRITICAL |
++		     CLK_SET_RATE_PARENT, 0),
++		     GATE(CLK_GOUT_G3D_MUX_PLL_CON, "gout_g3d_mux_pll_con", "fout_g3d_pll",
++			  CLK_CON_GAT_G3D_MUX_PLL_CON, 12, CLK_IS_CRITICAL |
++			  CLK_SET_RATE_PARENT, 0),
+ };
+ 
+ static const struct samsung_cmu_info g3d_cmu_info __initconst = {
+@@ -142,6 +243,12 @@ static int __init exynos7880_cmu_probe(struct platform_device *pdev)
+ 
+ static const struct of_device_id exynos7880_cmu_of_match[] = {
+ 	{
++		.compatible = "samsung,exynos7880-cmu-mif0",
++		.data = &mif0_cmu_info,
++	}, {
++		.compatible = "samsung,exynos7880-cmu-mif1",
++		.data = &mif1_cmu_info,
++	}, {
+ 		.compatible = "samsung,exynos7880-cmu-g3d",
+ 		.data = &g3d_cmu_info,
+ 	}, {
+@@ -158,3 +265,7 @@ static struct platform_driver exynos7880_cmu_driver __refdata = {
+ };
+ 
+ static int __init exynos7880_cmu_init(void)
++{
++	return platform_driver_register(&exynos7880_cmu_driver);
++}
++core_initcall(exynos7880_cmu_init);
+-- 
+2.56.0
+
