@@ -2,6 +2,8 @@
 
 > **Note:** this is a fork of [`android-a5y7lte/xnu-a5y17lte`](https://github.com/android-a5y7lte/xnu-a5y17lte) that adds the Mali-T830 GPU node, the `CMU_G3D` clock driver, and the `pd_g3d` power domain for the Exynos 7880. **Not tested on hardware.** The mainline kernel boots (M1–M5a passed on the real phone, see [`EVIDENCE.md`](EVIDENCE.md)), but the GPU has not been probed on a device yet.
 
+> For setup, dependencies, and flashing instructions, see the [upstream README](https://github.com/android-a5y7lte/xnu-a5y17lte#readme). This fork only documents what it adds on top.
+
 Bringing **mainline Linux (and later postmarketOS)** to the Samsung Galaxy A5 2017 (a5y17lte, Exynos 7880). The boot chain is:
 
 Samsung S-Boot → mainline **U-Boot** (`a5y17lte_defconfig`) → **Linux** with a new `exynos7880-a5y17lte` device tree.
